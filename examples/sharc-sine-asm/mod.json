@@ -6,6 +6,13 @@
  "license": "GPL-2.0-or-later",
  "device": "digitone-mk2",
  "os": "1.12",
- "requires": ["core"],
- "sharc": {"artifact": "sine.sharc.json"}
+ "requires": [
+  "core"
+ ],
+ "sharc": {
+  "artifact": "sine.sharc.json"
+ },
+ "resources": {
+  "core": "0.2"
+ }
 }

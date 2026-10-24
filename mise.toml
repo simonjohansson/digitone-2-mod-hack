@@ -12,19 +12,3 @@ run = "python build.py asm"
 [tasks.test]
 description = "Check the artifact producer without firmware or compilers"
 run = "python -m unittest discover -s tests"
-
-[tasks.build-c-l2]
-description = "Compile the current C sine into the bounded 32 KiB L2 app"
-run = "python build.py c --l2"
-
-[tasks.build-asm-l2]
-description = "Assemble the current sine into the bounded 32 KiB L2 app"
-run = "python build.py asm --l2"
-
-[tasks.build-c-l2-metrics]
-description = "Build the C L2 sine with optional callback measurement"
-run = "python build.py c --l2 --metrics"
-
-[tasks.build-asm-l2-metrics]
-description = "Build the ASM L2 sine with optional callback measurement"
-run = "python build.py asm --l2 --metrics"

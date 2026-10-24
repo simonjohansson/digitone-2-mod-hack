@@ -1,17 +1,13 @@
-# DN2 SHARC C sine
+# C sine
 
-From the repository root, after the [one-time setup](../../README.md#setup-once):
+Edit `sine.c` and run `mise run build-c` from the repository root.
+The command compiles this source and `entry.c`, links them with `l2.ldf`,
+and builds verified DN2 firmware with the Elekloader submodule and DigiHealth.
 
-```sh
-mise run build-c
-```
+The sine uses a uint32 phase accumulator and a positive half-table. The
+local phase edit advances twice per sample, so the output is one octave
+above the MIDI note. `entry.c` applies the note-held flag and a 32-sample
+attack/release ramp.
 
-This compiles the current `sine.c` and the shared C entry wrapper, generates
-a fresh artifact under `out/`, and builds verified firmware through the local
-Elekloader submodule. The firmware includes the core and DN2 DigiHealth.
-The current kernel doubles the phase advance, playing MIDI notes one octave
-higher than the reference sine, with the same 0.125 peak and gain ramp.
-
-See the [root README](../../README.md) for output paths and the ABI limits.
-The copied prebuilt artifact and author qualification scripts are retained
-for reference; the build command does not use them.
+See the [setup and build guide](../../README.md) and
+[DSP function interface](../../vendor/elekloader/docs/SHARC-DN2-ABI.md).

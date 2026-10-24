@@ -11,5 +11,8 @@
  ],
  "sharc": {
   "artifact": "sine.sharc.json"
+ },
+ "resources": {
+  "core": "0.2"
  }
 }
