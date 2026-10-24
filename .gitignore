@@ -8,3 +8,4 @@ __pycache__/
 *.elemod
 *.doj
 *.dxe
+mise.local.toml

@@ -45,7 +45,7 @@ void sine_render(float *output)
     int i;
     for (i = 0; i < 32; ++i) {
         output[i] = sine_sample(p);
-        p += increment;
+        p += increment + increment;
     }
     phase = p;
 }

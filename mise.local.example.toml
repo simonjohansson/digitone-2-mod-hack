@@ -1,0 +1,5 @@
+[env]
+DN2_STOCK = "/absolute/path/to/Digitone_II_OS1.12.syx"
+SELACHE = "/absolute/path/to/selache"
+DN2_DIGIHEALTH = "/absolute/path/to/digihealth-1.3.elemod"
+ELEKLOADER_CROSS = "m68k-elf-"

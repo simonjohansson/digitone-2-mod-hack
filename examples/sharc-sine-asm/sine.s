@@ -52,6 +52,7 @@ render_sample:
     R6=4;
     R4=R4+R6;
     R0=R0+R1;
+    R0=R0+R1;
     R3=R3-1;
     IF NE JUMP render_sample;
     DM(phase.)=R0;
