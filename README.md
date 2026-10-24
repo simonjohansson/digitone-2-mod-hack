@@ -122,7 +122,7 @@ not integrate ModelDigi.
 
 The submodule's source is `/Users/simonjohansson/src/elekloader`, tracking its
 local `sharc` branch, currently pinned to
-`14e55c68e00aaa6d5d32a405c1adf56357c776b5`. To pull a newer committed revision:
+`7a8108f8632f40a2bdb2712691853ff6f4ca979b`. To pull a newer committed revision:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init --remote vendor/elekloader
