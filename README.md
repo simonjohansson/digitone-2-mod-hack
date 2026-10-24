@@ -88,11 +88,14 @@ and 16 KiB data. Its data starts at `0x20094000`; its code PC16 starts at
 The 128-byte app stack declaration is unchanged; L2 adds no stack.
 See [L2 evidence and remaining limits](vendor/elekloader/docs/SHARC-L2.md).
 
-Run the firmware-free producer tests with `mise run test`. The committed
-source pair has been checked in Digikit and in short physical USB note
-tests through both placements. Physical cycle margin and sustained stress
-remain unqualified. The connected unit was left on ASM L2 build `LA03`,
-with DigiHealth responding. See the submodule's [physical results](vendor/elekloader/docs/SHARC-L2.md#physical-usb-note-checks).
+Run the firmware-free producer tests with `mise run test`. Both placements
+passed coupled Digikit and short physical USB note checks. Each L2 variant
+also passed a ten-minute physical sweep of all 49 supported notes eight
+times (392 note/release pairs), with zero dropped capture buffers. The
+latest recorded final state is C L2 build `LC03`, with DigiHealth responding.
+Heavy stock-project stress and hardware cycle margin remain unqualified;
+a static memory-audit discrepancy is tracked in Elekloader #53. See the
+submodule's [sustained results](vendor/elekloader/docs/SHARC-L2.md#ten-minute-physical-note-sweeps).
 
 ## Tested scope
 
@@ -113,7 +116,7 @@ not integrate ModelDigi.
 
 The submodule's source is `/Users/simonjohansson/src/elekloader`, tracking its
 local `sharc` branch, currently pinned to
-`e962fec3ebeeca29bb2dd7f8539277ab099a4926`. To pull a newer committed revision:
+`35bfdfd13b554d2c59493aea1fc8305b52a5ad51`. To pull a newer committed revision:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init --remote vendor/elekloader
