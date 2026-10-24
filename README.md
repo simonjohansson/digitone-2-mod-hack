@@ -96,7 +96,11 @@ latest recorded final state is C L2 build `LC03`, with DigiHealth responding.
 The corrected exact-stock memory audit closes Elekloader #53 with no
 observed app-window references within its coverage. Indirect accesses and
 physical cache/interrupt behavior remain limits. Heavy stock-project stress
-is tracked in #56; hardware cycle margin remains #41. See the
+is tracked in #56; its first multichannel/pattern increment passed bounded
+controls with both C/ASM sines. A01 sequencer notes compete with external
+MIDI for the single voice, so the mixed-run isolated-note oracle applies
+only to unopposed A02/A03 intervals. Project-load and heavy-effects
+qualification remain open; hardware cycle margin remains #41. See the
 submodule's [sustained results](vendor/elekloader/docs/SHARC-L2.md#ten-minute-physical-note-sweeps).
 
 ## Tested scope
@@ -118,7 +122,7 @@ not integrate ModelDigi.
 
 The submodule's source is `/Users/simonjohansson/src/elekloader`, tracking its
 local `sharc` branch, currently pinned to
-`060828a483dec10e39f11e83512424fe78bcba9b`. To pull a newer committed revision:
+`14e55c68e00aaa6d5d32a405c1adf56357c776b5`. To pull a newer committed revision:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init --remote vendor/elekloader
