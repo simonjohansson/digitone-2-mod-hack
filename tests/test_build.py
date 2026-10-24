@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The artifact boundary must reject malformed output before firmware builds."""
 import struct
+import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 import unittest
 
-from build import artifact
+from build import artifact, check_toolchain
 
 
 def executable(code=bytes.fromhex('0001000100010001')):
@@ -28,6 +32,28 @@ class ArtifactTests(unittest.TestCase):
         changed = artifact(*executable(bytes.fromhex('c001c00100010001')))
         self.assertNotEqual(changed['segments'][0], app['segments'][0])
 
+    def test_guard_boundary(self):
+        app = artifact(*executable(bytes(704)))
+        self.assertEqual(bytes.fromhex(app['segments'][0]['hex'])[-64:], bytes.fromhex('0100') * 32)
+
+    def test_toolchain_pin_and_clean_source(self):
+        with tempfile.TemporaryDirectory() as work:
+            repo = Path(work)
+            subprocess.run(['git', 'init', '-q', work], check=True)
+            source = repo / 'source.c'
+            source.write_text('initial\n')
+            subprocess.run(['git', 'add', 'source.c'], cwd=repo, check=True)
+            subprocess.run(['git', '-c', 'user.name=Build Test', '-c', 'user.email=test@example.invalid',
+                            'commit', '-qm', 'Initialize compiler fixture'], cwd=repo, check=True)
+            revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
+            with self.assertRaisesRegex(ValueError, 'Selache must be at'):
+                check_toolchain(repo)
+            with patch('build.SELACHE_PIN', revision):
+                self.assertEqual(check_toolchain(repo), revision)
+                source.write_text('modified\n')
+                with self.assertRaisesRegex(ValueError, 'checkout must be clean'):
+                    check_toolchain(repo)
+
     def test_rejects_invalid_executables_and_abi_layout(self):
         raw, dump = executable()
         cases = [
@@ -40,6 +66,7 @@ class ArtifactTests(unittest.TestCase):
             (raw, dump + "0006 UNDEF 00000000 00000000 function global 00000000 'missing'\n", 'unresolved symbol'),
             (raw, dump + "0006 progbits 00000003 002ddd00 00000034 00000004:B 0 0 4 0 'extra'\n", 'only probe_code'),
             (*executable(bytes(772)), '768-byte area'),
+            (*executable(bytes(706)), '64-byte NOP read-ahead guard'),
         ]
         for data, inspector, message in cases:
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):

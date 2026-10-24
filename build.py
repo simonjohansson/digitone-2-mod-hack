@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shlex
@@ -14,12 +15,22 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / 'vendor/elekloader'
+SELACHE_PIN = '2b26d3b75c53063575bc5c820fa0d38879335187'
+CODE_GUARD_BYTES = 64
 sys.path.insert(0, str(VENDOR))
 
 
 def require(ok, message):
     if not ok:
         raise ValueError(message)
+
+
+def check_toolchain(path):
+    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=path, text=True).strip()
+    require(revision == SELACHE_PIN, 'Selache must be at ' + SELACHE_PIN)
+    require(not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=normal'],
+                                        cwd=path, text=True).strip(), 'Selache checkout must be clean')
+    return revision
 
 
 def artifact(raw, dump):
@@ -43,6 +54,7 @@ def artifact(raw, dump):
     _, data_address, data = rows['probe_data']
     require(code_pc == 0x16ed00 and 0 < len(code) <= 768 and len(code) % 2 == 0,
             'code must fit the existing 768-byte area at PC16 0x16ed00')
+    require(len(code) + CODE_GUARD_BYTES <= 768, 'code leaves no 64-byte NOP read-ahead guard')
     require(data_address == 0x2ddd00 and 200 <= len(data) <= 256 and len(data) % 4 == 0,
             'data must fit the existing 256-byte area at 0x2ddd00')
 
@@ -90,6 +102,7 @@ def main():
     stock, selache, health = [Path(p).expanduser().resolve()
                              for p in (args.stock, args.selache, args.digihealth)]
     require(stock.is_file() and health.is_file(), 'stock or DigiHealth module is missing')
+    revision = check_toolchain(selache)
     tools = selache / 'target/release'
     require(all((tools / name).is_file() for name in ('selcc', 'selas', 'seld', 'seldump')),
             'SELACHE must contain target/release/{selcc,selas,seld,seldump}')
@@ -136,6 +149,9 @@ def main():
     except (sdk.BuildError, patch.PatchError) as error:
         raise ValueError(str(error)) from error
     report = {'kind': args.kind,
+              'host': {'system': platform.platform(), 'machine': platform.machine(), 'python': sys.version},
+              'toolchain': {'commit': revision, 'tools_sha256': {name: sha(tools / name)
+                            for name in ('selcc', 'selas', 'seld', 'seldump')}},
               'sources_sha256': {str(p.relative_to(ROOT)): sha(p)
                                  for p in (kernel, shared / 'entry.c', shared / 'keyed.ldf')},
               'stock_sha256': sha(stock), 'digihealth_sha256': sha(health),

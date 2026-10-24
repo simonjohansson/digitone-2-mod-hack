@@ -17,7 +17,18 @@ the original examples. Each firmware includes the DN2 core and DigiHealth.
 Install [mise](https://mise.jdx.dev/), the ColdFire `m68k-elf-` tools, and
 [Selache](https://github.com/js216/selache). The tested Selache revision is
 `2b26d3b75c53063575bc5c820fa0d38879335187`; its `selcc`, `selas`, `seld` and
-`seldump` binaries must be built under `target/release/`. Python 3.12.13 is
+`seldump` binaries must be built under `target/release/`. The commands require
+that exact clean source revision and record hashes of the four binaries.
+For a fresh compiler checkout:
+
+```sh
+git clone https://github.com/js216/selache.git "$HOME/src/selache"
+cd "$HOME/src/selache"
+git switch --detach 2b26d3b75c53063575bc5c820fa0d38879335187
+mise exec rust@1.98.1 -- cargo build --release --locked -p selcc -p selas -p seld -p seldump
+```
+
+Then return to this mod repository. Python 3.12.13 is
 managed by this repository's mise configuration; no Python packages are needed.
 The ColdFire tools build the core. The local template sets
 `ELEKLOADER_CROSS = "m68k-elf-"`; change it if your GNU tools use another prefix.
@@ -53,22 +64,41 @@ artifacts and development qualification scripts are not build inputs.
 No Elekloader helper paths or `PYTHONPATH` setup are needed.
 
 The existing keyed ABI, 768-byte code area, 256-byte data area, pitch-table
-address and 128-byte declared app stack contribution are retained. Builds
+address and 128-byte declared app stack contribution are retained. The
+768-byte code area includes a required 64-byte NOP read-ahead guard, leaving
+at most 704 bytes for linked instructions. The builder enforces this bound.
+The [callback contract](vendor/elekloader/docs/SHARC-DN2-ABI.md) specifies the
+current init/render, gate and register preservation rules. Builds
 check artifact ownership and callback locations; Elekloader checks the core,
 conflicts, budgets and resulting firmware. Runtime behavior and actual stack
 usage still need qualification when DSP code changes. The generated
-`out/<kind>/build-report.json` records source and output hashes. Firmware,
+`out/<kind>/build-report.json` records source/output hashes, toolchain
+revision, compiler binary hashes and host/Python versions. Firmware,
 modules, compiler outputs and reports stay under ignored `out/`.
 
 Run the firmware-free producer tests with `mise run test`. The committed
 source pair has also been checked in Digikit; emulator evidence does not
 establish physical-device timing or reliability.
 
+## Tested scope
+
+Tested on macOS 27.0.1, Apple arm64, with mise Python 3.12.13 and
+`m68k-elf-gcc` 16.2.0. The exact stock input is Digitone II OS 1.12 SHA-256
+`7e5b8a733d4ab1fdf7e5d22757f7d8eddaa3cbf71d0858874a791844c02ceb35`.
+Every candidate includes the owner's DN2 DigiHealth 1.3 module.
+
+This is one exclusive, global master-output mod: 32 mono binary32 samples
+per block at 48 kHz, copied by the bridge to both channels. The C and ASM
+variants cannot be enabled together. These examples do not add selectable
+sound/filter machines, per-track routing or screen controls. App code and
+data together are limited to 1 KiB. Increasing that reservation and qualifying
+more stack are separate work; this example does not fit ModelDigi.
+
 ## Sync Elekloader
 
 The submodule's source is `/Users/simonjohansson/src/elekloader`, tracking its
 local `sharc` branch, currently pinned to
-`6ad9f9703f6fd0c2e1ef8e4edb92bd203aefa4db`. To pull a newer committed revision:
+`8fa19c15017852eea28f4fe9b6de450b3a4d8d45`. To pull a newer committed revision:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init --remote vendor/elekloader
