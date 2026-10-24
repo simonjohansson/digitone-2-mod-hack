@@ -93,8 +93,10 @@ passed coupled Digikit and short physical USB note checks. Each L2 variant
 also passed a ten-minute physical sweep of all 49 supported notes eight
 times (392 note/release pairs), with zero dropped capture buffers. The
 latest recorded final state is C L2 build `LC03`, with DigiHealth responding.
-Heavy stock-project stress and hardware cycle margin remain unqualified;
-a static memory-audit discrepancy is tracked in Elekloader #53. See the
+The corrected exact-stock memory audit closes Elekloader #53 with no
+observed app-window references within its coverage. Indirect accesses and
+physical cache/interrupt behavior remain limits. Heavy stock-project stress
+is tracked in #56; hardware cycle margin remains #41. See the
 submodule's [sustained results](vendor/elekloader/docs/SHARC-L2.md#ten-minute-physical-note-sweeps).
 
 ## Tested scope
@@ -116,7 +118,7 @@ not integrate ModelDigi.
 
 The submodule's source is `/Users/simonjohansson/src/elekloader`, tracking its
 local `sharc` branch, currently pinned to
-`35bfdfd13b554d2c59493aea1fc8305b52a5ad51`. To pull a newer committed revision:
+`67db98b04f5da42fe4d1c3b9b04af5b09912405d`. To pull a newer committed revision:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init --remote vendor/elekloader
