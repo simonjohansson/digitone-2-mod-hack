@@ -1,0 +1,10 @@
+out/
+__pycache__/
+*.pyc
+.venv/
+*.syx
+*.syx.json
+*.bin
+*.elemod
+*.doj
+*.dxe
