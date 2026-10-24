@@ -40,6 +40,11 @@ class ArtifactTests(unittest.TestCase):
         dump = dump.replace('002ddd00', '20094000').replace('002ddd98', '20094098')
         app = artifact(bytes(raw), dump, l2=True)
         self.assertEqual(app['abi'], 'dn2-master-mono32-l2-v1')
+        measured = artifact(bytes(raw), dump, l2=True, metrics=True)
+        self.assertEqual(measured.pop('abi'), 'dn2-master-mono32-l2-metrics-v1')
+        self.assertEqual(measured, {k: v for k, v in app.items() if k != 'abi'})
+        with self.assertRaisesRegex(ValueError, 'measurement requires the L2 layout'):
+            artifact(*executable(), metrics=True)
         self.assertEqual(app['segments'][1]['offset_bytes'], 16384)
         self.assertEqual(app['zero'], [{'offset_bytes': 16588, 'size_bytes': 16180}])
         self.assertEqual(bytes.fromhex(app['segments'][0]['hex'])[-64:], b'\x01\x00' * 32)
