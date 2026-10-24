@@ -6,6 +6,9 @@ Elekloader as a submodule:
 ```sh
 mise run build-c
 mise run build-asm
+# Same sources in the experimental 32 KiB L2 reservation:
+mise run build-c-l2
+mise run build-asm-l2
 ```
 
 The commands always compile the current sources. Both examples currently
@@ -55,6 +58,8 @@ with those names can also supply the paths.
 |---|---|---|
 | `mise run build-c` | `examples/sharc-sine/sine.c` and `entry.c` | `out/c/firmware.syx` |
 | `mise run build-asm` | `examples/sharc-sine-asm/sine.s` and the shared `entry.c` | `out/asm/firmware.syx` |
+| `mise run build-c-l2` | Same C sources, `l2.ldf` | `out/c-l2/firmware.syx` |
+| `mise run build-asm-l2` | Same ASM/shared wrapper, `l2.ldf` | `out/asm-l2/firmware.syx` |
 
 Each command rebuilds its own output directory. It compiles and links the
 kernel and C entry wrapper, reads callback locations from the linked
@@ -63,7 +68,7 @@ the submodule's SDK, lint and firmware builder. The checked-in reference
 artifacts and development qualification scripts are not build inputs.
 No Elekloader helper paths or `PYTHONPATH` setup are needed.
 
-The existing keyed ABI, 768-byte code area, 256-byte data area, pitch-table
+The L1 commands retain the existing keyed ABI, 768-byte code area, 256-byte data area, pitch-table
 address and 128-byte declared app stack contribution are retained. The
 768-byte code area includes a required 64-byte NOP read-ahead guard, leaving
 at most 704 bytes for linked instructions. The builder enforces this bound.
@@ -76,9 +81,18 @@ usage still need qualification when DSP code changes. The generated
 revision, compiler binary hashes and host/Python versions. Firmware,
 modules, compiler outputs and reports stay under ignored `out/`.
 
+The L2 commands use `dn2-master-mono32-l2-v1` at loader
+`0x20090000..0x20097fff`: 16 KiB code (including the same 64-byte guard)
+and 16 KiB data. Its data starts at `0x20094000`; its code PC16 starts at
+`0xbc8000`. The submodule installs the pinned bridge pitch table in L1.
+The 128-byte app stack declaration is unchanged; L2 adds no stack.
+See [L2 evidence and remaining limits](vendor/elekloader/docs/SHARC-L2.md).
+
 Run the firmware-free producer tests with `mise run test`. The committed
-source pair has also been checked in Digikit; emulator evidence does not
-establish physical-device timing or reliability.
+source pair has been checked in Digikit and in short physical USB note
+tests through both placements. Physical cycle margin and sustained stress
+remain unqualified. The connected unit was left on ASM L2 build `LA03`,
+with DigiHealth responding. See the submodule's [physical results](vendor/elekloader/docs/SHARC-L2.md#physical-usb-note-checks).
 
 ## Tested scope
 
@@ -91,14 +105,15 @@ This is one exclusive, global master-output mod: 32 mono binary32 samples
 per block at 48 kHz, copied by the bridge to both channels. The C and ASM
 variants cannot be enabled together. These examples do not add selectable
 sound/filter machines, per-track routing or screen controls. App code and
-data together are limited to 1 KiB. Increasing that reservation and qualifying
-more stack are separate work; this example does not fit ModelDigi.
+data share 1 KiB in the original commands or 32 KiB in the experimental L2
+commands. Qualifying more stack remains separate work; this example does
+not integrate ModelDigi.
 
 ## Sync Elekloader
 
 The submodule's source is `/Users/simonjohansson/src/elekloader`, tracking its
 local `sharc` branch, currently pinned to
-`8fa19c15017852eea28f4fe9b6de450b3a4d8d45`. To pull a newer committed revision:
+`e962fec3ebeeca29bb2dd7f8539277ab099a4926`. To pull a newer committed revision:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init --remote vendor/elekloader

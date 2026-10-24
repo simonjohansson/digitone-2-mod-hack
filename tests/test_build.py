@@ -32,6 +32,31 @@ class ArtifactTests(unittest.TestCase):
         changed = artifact(*executable(bytes.fromhex('c001c00100010001')))
         self.assertNotEqual(changed['segments'][0], app['segments'][0])
 
+    def test_l2_layout_and_guard_bound(self):
+        raw, dump = executable()
+        raw = bytearray(raw)
+        struct.pack_into('<I', raw, 24, 0xbc8000)
+        dump = dump.replace('0016ed00', '00bc8000').replace('0016ed02', '00bc8002')
+        dump = dump.replace('002ddd00', '20094000').replace('002ddd98', '20094098')
+        app = artifact(bytes(raw), dump, l2=True)
+        self.assertEqual(app['abi'], 'dn2-master-mono32-l2-v1')
+        self.assertEqual(app['segments'][1]['offset_bytes'], 16384)
+        self.assertEqual(app['zero'], [{'offset_bytes': 16588, 'size_bytes': 16180}])
+        self.assertEqual(bytes.fromhex(app['segments'][0]['hex'])[-64:], b'\x01\x00' * 32)
+        with self.assertRaisesRegex(ValueError, 'PC16'):
+            artifact(*executable(), l2=True)
+        for count, accepted in ((16320, True), (16322, False)):
+            raw, dump = executable(bytes(count))
+            raw = bytearray(raw)
+            struct.pack_into('<I', raw, 24, 0xbc8000)
+            dump = dump.replace('0016ed00', '00bc8000').replace('0016ed02', '00bc8002')
+            dump = dump.replace('002ddd00', '20094000').replace('002ddd98', '20094098')
+            if accepted:
+                self.assertEqual(len(bytes.fromhex(artifact(bytes(raw), dump, l2=True)['segments'][0]['hex'])), 16384)
+            else:
+                with self.assertRaisesRegex(ValueError, '64-byte NOP read-ahead guard'):
+                    artifact(bytes(raw), dump, l2=True)
+
     def test_guard_boundary(self):
         app = artifact(*executable(bytes(704)))
         self.assertEqual(bytes.fromhex(app['segments'][0]['hex'])[-64:], bytes.fromhex('0100') * 32)
