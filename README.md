@@ -11,15 +11,16 @@ It includes core-dn2 0.2, the `machines-dn2` companion and DigiHealth. Open
 **FUNC+SYN**, choose **CLONE** and press **YES** once to assign it. CLONE
 uses FM TONE's sound and parameter pages; it has no master-output sine or
 custom SHARC code. The DSP firmware stays stock. This first step proves
-native selection and saved identity before adding a custom synth voice.
+native selection and stock-clone audio before adding a custom synth voice.
 It uses the existing ColdFire compiler and does not need Selache.
 
 The descriptor is in `examples/synth-clone/clone.c`. Its four fields are the
 permanent ID (5 here), the stock synth (0 = FM TONE), the display name and
 the short label. The manifest contributes a pointer to `dn2_synths`; it has
 no firmware hook sites. IDs do not depend on mod load order. Duplicate IDs
-are refused, and an installed companion keeps an absent mod's ID as a
-silent MISSING machine. See the [companion contract](vendor/elekloader/docs/MACHINES-DN2.md).
+are refused. The registry's missing-ID fallback is unit-tested, but
+end-to-end project reload and missing-mod qualification remain open in
+[issue #59](https://github.com/simonjohansson/elekloader/issues/59). See the [companion contract](vendor/elekloader/docs/MACHINES-DN2.md).
 
 The existing master-output SHARC sine remains a separate C baseline:
 
@@ -109,6 +110,24 @@ for MIDI notes 60, 69 and 72, at the expected octave-up pitches. Installed
 code and callback addresses matched, channels were identical, samples were
 finite, peak was 0.125, and idle/release tails were silent. No DSP halt or
 missing block was reported. These are emulator results, not hardware timing.
+
+## Selectable-clone emulator result
+
+With DigiHealth 1.5 and coupled DigiKit
+`ded547e14e63977c1a6e808812d46243e13c43d0`, FUNC+SYN lists CLONE and one
+YES assigns it. Reopening the selector and visiting FLTR preserve the
+selected marker. Its SYN/FLTR/AMP controls match FM TONE. Track 1 and track
+2 each play CLONE; the freshly captured one-second stereo WAVs match the
+stock FM TONE reference byte for byte (SHA-256
+`06b2e1fb1cff83605275df3b52bebc025877e9da59c9505d5eeb70c38c8710b0`).
+The owning track was checked through DN2's allocated voice slots, rather
+than assuming a voice index is a track index.
+
+This is the first #59 increment. The scripted project test wrote ID-5 sound
+records but did not conclusively select the named saved project after
+changing firmware. Project/sound round-trip and missing-mod runtime checks
+remain open; hardware has not been tested. The separate DigiKit proof
+correction is deferred in [#65](https://github.com/simonjohansson/elekloader/issues/65).
 
 ## Sync Elekloader
 
