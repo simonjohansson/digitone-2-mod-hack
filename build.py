@@ -96,6 +96,7 @@ def main():
     parser.add_argument('--stock', default=os.environ.get('DN2_STOCK'))
     parser.add_argument('--selache', default=os.environ.get('SELACHE'))
     parser.add_argument('--digihealth', default=os.environ.get('DN2_DIGIHEALTH'))
+    parser.add_argument('--version', default='SL01', help='the 4 characters the unit shows')
     args = parser.parse_args()
     out = ROOT / 'out/c'
     require(not out.is_symlink(), 'output directory must not be a symlink')
@@ -168,7 +169,7 @@ PROCESSOR p0 { OUTPUT($COMMAND_LINE_OUTPUT_FILE) SECTIONS {
             require(lint.main([module, '--stock', str(stock),
                                *[arg for m in modules if m != module for arg in ('--with', m)]]) == 0,
                     'module lint failed')
-        outputs, manifest = patch.build(str(stock), modules, 'SL01')
+        outputs, manifest = patch.build(str(stock), modules, args.version)
         firmware = out / 'firmware.syx'
         patch.save(outputs, manifest, str(firmware))
     except (sdk.BuildError, patch.PatchError) as error:
