@@ -10,8 +10,9 @@ Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
 **LOWPASS** in FLTR. SINE uses synth ID 6; LOWPASS uses filter ID 8. The synth
 and filter have separate memory and run through the stock track pipeline.
 SINE has two SYN pages: LEV and TUNE on SYN1, OCT and FINE on SYN2, the
-other slots empty; the knobs save with the sound and answer FM TONE's MIDI
-CC/NRPN for their position (LEV is CC 40), but do not change the sound yet. FLTR has no mod
+other slots empty. LEV sets the level, TUNE transposes in semitones around
+64 and OCT in octaves (one per 16); FINE is not used yet. The knobs save with
+the sound and answer FM TONE's MIDI CC/NRPN for their position (LEV is CC 40). FLTR has no mod
 controls; AMP, pan and mixer remain native.
 This is experimental and timing is unqualified.
 

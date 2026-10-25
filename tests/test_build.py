@@ -131,7 +131,9 @@ class VoiceStateTests(unittest.TestCase):
                 + '#include "'+str(source)+'"\n'+'''
 int main(void) {
  float a[32], b[32], first[32];
- struct dn2_voice_input in={a,0,60u<<8,DN2_VOICE_START};
+ uint32_t knobs[DN2_VOICE_PARAMS]={0};
+ knobs[0]=127u<<8; knobs[1]=64u<<8; knobs[8]=64u<<8; knobs[12]=64u<<8;  /* LEV full, TUNE/OCT centred */
+ struct dn2_voice_input in={a,0,60u<<8,DN2_VOICE_START,knobs};
  sharc_voice_render(&in); memcpy(first,a,sizeof a);
  uint32_t saved=phase[0];
  in.output=b; in.slot=1; in.pitch=64u<<8; sharc_voice_render(&in);
@@ -147,6 +149,38 @@ int main(void) {
 }
 ''')
             subprocess.run(['cc','-std=c99','-Wall','-Werror','-I',str(include),str(p/'test.c'),'-o',str(p/'test')],check=True)
+            subprocess.run([str(p/'test')],check=True)
+
+
+    @unittest.skipUnless(shutil.which('cc'), 'native C compiler unavailable')
+    def test_knobs_set_level_and_pitch(self):
+        source = build.ROOT / 'examples/sharc-sine/sine.c'
+        include = build.VENDOR / 'elekloader/sdk/include'
+        with tempfile.TemporaryDirectory() as work:
+            p = Path(work)
+            (p/'test.c').write_text('#include <assert.h>\n#include <math.h>\n'
+                + '#include "'+str(source)+'"\n'+'''
+static uint32_t knobs[DN2_VOICE_PARAMS];
+static float out[32];
+/* One START block of note 60; returns the phase it advanced, fills out. */
+static uint32_t block(uint32_t lev, uint32_t tune, uint32_t oct) {
+ knobs[0]=lev<<8; knobs[1]=tune<<8; knobs[8]=oct<<8;
+ struct dn2_voice_input in={out,0,60u<<8,DN2_VOICE_START,knobs};
+ sharc_voice_render(&in); return phase[0];
+}
+static float peak(void) { float m=0; for(int i=0;i<32;++i) if(fabsf(out[i])>m) m=fabsf(out[i]); return m; }
+int main(void) {
+ uint32_t base=block(127,64,64); float full=peak(); assert(full>0.1f);
+ block(0,64,64); assert(peak()==0.0f);                        /* LEV 0 is silent */
+ block(63,64,64); assert(fabsf(peak()/full-63.0f/127.0f)<1e-4f); /* LEV scales */
+ assert(block(127,76,64)==2*base);                            /* TUNE +12 doubles the step */
+ assert(block(127,64,80)==2*base && block(127,64,79)==base);  /* OCT: one octave per 16 */
+ assert(block(127,64,48)==base/2);
+ block(127,64,0); assert(peak()==0.0f);                       /* below note 36: silent */
+ return 0;
+}
+''')
+            subprocess.run(['cc','-std=c99','-Wall','-Werror','-I',str(include),str(p/'test.c'),'-o',str(p/'test'),'-lm'],check=True)
             subprocess.run([str(p/'test')],check=True)
 
 

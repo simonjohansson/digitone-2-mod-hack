@@ -25,11 +25,15 @@ static const uint32_t steps12[12] = {
     9290209u, 9842633u, 10427907u, 11047982u
 };
 
+/* Knobs (machine.c): param[0] LEV, [1] TUNE, [8] OCT, [12] FINE, unsigned 8.8.
+ * TUNE moves the note in semitones around 64; OCT in octaves, one per 16
+ * around 64..79. FINE is not used yet. Notes outside 36..84 are silent. */
 void sharc_voice_render(const struct dn2_voice_input *in)
 {
     uint32_t slot = in->slot;
     uint32_t p = in->flags & DN2_VOICE_START ? 0 : phase[slot];
-    uint32_t note = in->pitch >> 8;
+    uint32_t note = (in->pitch >> 8) + (in->param[1] >> 8) + 12 * (in->param[8] >> 12) - 112;
+    float gain = (float)(int32_t)(in->param[0] >> 8) * (1.0f / 127.0f);
     uint32_t step = 0;
     if (note >= 36 && note <= 84) {
         uint32_t k = note - 36, octave = 0;
@@ -41,7 +45,7 @@ void sharc_voice_render(const struct dn2_voice_input *in)
         float value = table[index & 31];
         if (index & 32) value = -value;
         if (!step) value = 0.0f;
-        in->output[i] = value;
+        in->output[i] = value * gain;
         /* Preserve this example's documented octave-up tuning. */
         p += step + step;
     }
