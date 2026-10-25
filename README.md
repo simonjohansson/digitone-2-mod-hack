@@ -6,7 +6,12 @@ Build the selectable C SINE synth and CLONE FILTER with DigiHealth:
 mise run build-c
 ```
 
-Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
+The current voice-synth firmware is silent on hardware, including stock
+synths; [issue #69](https://github.com/simonjohansson/elekloader/issues/69)
+tracks the blocker. Use this build for emulator development until physical
+audio qualification passes.
+
+Load `out/c/firmware.syx` in the emulator. In **FUNC+SYN**, select **SINE** in SYN and
 **CLONE FILTER** in FLTR. Both use ID 6 in independent namespaces. The
 filter clones stock MULTI-MODE; AMP, pan and mixer remain native. The SYN
 page has no controls pretending to change the oscillator.
