@@ -142,6 +142,51 @@ class CloneBuildTests(unittest.TestCase):
                     build_clone.main()
             self.assertFalse(firmware.exists())
 
+class VoiceBuildTests(unittest.TestCase):
+    def test_voice_producer_uses_the_pinned_adapter(self):
+        raw, dump = executable()
+        raw = bytearray(raw)
+        struct.pack_into('<I', raw, 24, 0xbc8400)
+        dump = dump.replace('00bc8000', '00bc8400').replace('00bc8002', '00bc8402')
+        dump = dump.replace('sharc_init.', 'sharc_voice_render.')
+        doc = artifact(bytes(raw), dump, voice=True)
+        self.assertEqual(doc['abi'], 'dn2-voice-mono32-l2-v1')
+        self.assertEqual(doc['machine_id'], 6)
+        self.assertEqual(doc['entries'], {'render_offset_bytes': 2048})
+        self.assertEqual(doc['zero'][-1], {'offset_bytes': 31744, 'size_bytes': 1024})
+        # The voice ABI has no master pitch-table requirement.
+        small_dump = '\n'.join(line for line in dump.replace('000000cc:B', '00000004:B').splitlines() if 'steps12' not in line)
+        small = artifact(bytes(raw[:64]), small_dump, voice=True)
+        self.assertEqual(len(bytes.fromhex(small['segments'][2]['hex'])), 4)
+
+    @unittest.skipUnless(shutil.which('cc'), 'native C compiler unavailable')
+    def test_phase_is_independent_and_retrigger_restarts_it(self):
+        source = build.ROOT / 'examples/sharc-sine/sine.c'
+        include = build.VENDOR / 'elekloader/sdk/include'
+        with tempfile.TemporaryDirectory() as work:
+            p = Path(work)
+            (p/'test.c').write_text('#include <assert.h>\n#include <string.h>\n'
+                + '#include "'+str(source)+'"\n'+'''
+int main(void) {
+ float a[32], b[32], first[32];
+ struct dn2_voice_input in={a,0,60u<<8,DN2_VOICE_START};
+ sharc_voice_render(&in); memcpy(first,a,sizeof a);
+ uint32_t saved=phase[0];
+ in.output=b; in.slot=1; in.pitch=64u<<8; sharc_voice_render(&in);
+ assert(phase[0]==saved && phase[1]!=saved);
+ uint32_t other=phase[1];
+ in.output=a; in.slot=0; in.pitch=60u<<8; in.flags=0;
+ sharc_voice_render(&in); assert(memcmp(first,a,sizeof a));
+ in.flags=DN2_VOICE_START; sharc_voice_render(&in);
+ assert(!memcmp(first,a,sizeof a) && phase[1]==other);
+ in.slot=15; in.pitch=85u<<8; sharc_voice_render(&in);
+ for(int i=0;i<32;++i) assert(a[i]==0.0f);
+ return 0;
+}
+''')
+            subprocess.run(['cc','-std=c99','-Wall','-Werror','-I',str(include),str(p/'test.c'),'-o',str(p/'test')],check=True)
+            subprocess.run([str(p/'test')],check=True)
+
 
 if __name__ == '__main__':
     unittest.main()

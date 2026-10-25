@@ -2,7 +2,7 @@
 python = "3.12.13"
 
 [tasks.build-c]
-description = "Compile the current C sine and build DN2 firmware"
+description = "Build the selectable C SINE track synth with DigiHealth"
 run = "python build.py c"
 
 [tasks.build-asm]

@@ -1,9 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* Author-only compiler probe; no firmware addresses or SDK interface. */
-#include <stdint.h>
+/* Per-voice oscillator; the stock engine supplies the envelope and filter. */
+#include "digitone-mk2/voice.h"
 
-static uint32_t phase;
-static uint32_t increment;
+static uint32_t phase[16];
 
 /* Positive half of 0.125 * sin(2*pi*i/64), rounded to binary32.
  * shortcut: this Selache pin miscompiles negative float initializers;
@@ -19,33 +18,32 @@ static const float table[32] = {
     0.047835429f, 0.036285585f, 0.024386290f, 0.012252143f
 };
 
-/* Inspect actual widths: the assembler's attributes alone do not prove them. */
-const uint32_t sine_widths[4] = {
-    sizeof(char), sizeof(uint32_t), sizeof(float), sizeof(void *)
+/* Notes 36..47; higher octaves double the phase step. */
+static const uint32_t steps12[12] = {
+    5852465u, 6200470u, 6569170u, 6959793u,
+    7373644u, 7812103u, 8276635u, 8768789u,
+    9290209u, 9842633u, 10427907u, 11047982u
 };
 
-void sine_init(uint32_t phase_increment)
+void sharc_voice_render(const struct dn2_voice_input *in)
 {
-    phase = 0;
-    increment = phase_increment;
-}
-
-float sine_sample(uint32_t p)
-{
-    uint32_t index = p >> 26;
-    float value = table[index & 31];
-    if (index & 32)
-        return -value;
-    return value;
-}
-
-void sine_render(float *output)
-{
-    uint32_t p = phase;
-    int i;
-    for (i = 0; i < 32; ++i) {
-        output[i] = sine_sample(p);
-        p += increment + increment;
+    uint32_t slot = in->slot;
+    uint32_t p = in->flags & DN2_VOICE_START ? 0 : phase[slot];
+    uint32_t note = in->pitch >> 8;
+    uint32_t step = 0;
+    if (note >= 36 && note <= 84) {
+        uint32_t k = note - 36, octave = 0;
+        while (k >= 12) { k -= 12; ++octave; }
+        step = steps12[k] << octave;
     }
-    phase = p;
+    for (int i = 0; i < 32; ++i) {
+        uint32_t index = p >> 26;
+        float value = table[index & 31];
+        if (index & 32) value = -value;
+        if (!step) value = 0.0f;
+        in->output[i] = value;
+        /* Preserve this example's documented octave-up tuning. */
+        p += step + step;
+    }
+    phase[slot] = p;
 }

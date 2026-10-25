@@ -1,18 +1,36 @@
 {
- "id": "sharc-sine",
+ "id": "sine-machine",
  "version": "0.1",
- "title": "SHARC sine",
- "description": "Played monophonic SHARC sine on the DN2 master output",
+ "title": "SINE",
+ "description": "A selectable SHARC sine through the stock track envelope and filter.",
  "license": "GPL-2.0-or-later",
  "device": "digitone-mk2",
  "os": "1.12",
  "requires": [
-  "core"
+  "core",
+  "machines-dn2"
  ],
  "sharc": {
   "artifact": "sine.sharc.json"
  },
  "resources": {
   "core": "0.2"
- }
+ },
+ "sources": [
+  "machine.c"
+ ],
+ "contribute": [
+  {
+   "to": "dn2_voice_synths",
+   "data": "00000000",
+   "relocs": [
+    [
+     0,
+     "abs32",
+     "sym:sine_machine",
+     0
+    ]
+   ]
+  }
+ ]
 }
