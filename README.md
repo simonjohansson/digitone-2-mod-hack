@@ -43,7 +43,7 @@ mise exec rust@1.98.1 -- cargo build --release --locked -p selcc -p selas -p sel
 In this repository:
 
 ```sh
-git -c protocol.file.allow=always submodule update --init
+git submodule update --init
 cp mise.local.example.toml mise.local.toml
 # Set DN2_STOCK, SELACHE and DN2_DIGIHEALTH.
 mise trust
