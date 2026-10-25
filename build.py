@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Compile SINE and UNITY and build DN2 firmware with DigiHealth."""
+"""Compile SINE and LOWPASS and build DN2 firmware with DigiHealth."""
 import argparse
 import hashlib
 import json
@@ -77,7 +77,7 @@ def artifact(raw, dump, machine_kind='voice', machine_id=6):
     require(struct.unpack_from('<I', raw, 24)[0] == entry, 'wrong executable entry')
     code = b''.join(code[i:i + 2][::-1] for i in range(0, len(code), 2))
     producer = voice_artifact if machine_kind == 'voice' else filter_artifact
-    return producer(code, data, offset, machine_id, 128 if machine_kind == 'voice' else 12)
+    return producer(code, data, offset, machine_id, 128 if machine_kind == 'voice' else 20)
 
 
 def run(args, capture=False):
@@ -120,7 +120,7 @@ def main():
     from elekloader.sdk.sharc import machine_layout
     kernels = {}
     source_paths = []
-    for kind, stem, machine_id in [('voice', 'sine', 6), ('filter', 'filter', 7)]:
+    for kind, stem, machine_id in [('voice', 'sine', 6), ('filter', 'filter', 8)]:
         source_dir = ROOT / 'examples' / ('sharc-' + stem)
         kernel = source_dir / (stem + '.c')
         folder = out / kind
@@ -168,7 +168,7 @@ PROCESSOR p0 { OUTPUT($COMMAND_LINE_OUTPUT_FILE) SECTIONS {
             require(lint.main([module, '--stock', str(stock),
                                *[arg for m in modules if m != module for arg in ('--with', m)]]) == 0,
                     'module lint failed')
-        outputs, manifest = patch.build(str(stock), modules, 'SF01')
+        outputs, manifest = patch.build(str(stock), modules, 'SL01')
         firmware = out / 'firmware.syx'
         patch.save(outputs, manifest, str(firmware))
     except (sdk.BuildError, patch.PatchError) as error:

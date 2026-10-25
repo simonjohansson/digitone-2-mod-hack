@@ -45,7 +45,7 @@ class ArtifactTests(unittest.TestCase):
         doc = artifact(bytes(raw), dump, 'filter', 7)
         self.assertEqual(doc['abi'], 'dn2-filter-mono32-l2-v1')
         self.assertEqual(doc['machine_id'], 7)
-        self.assertEqual(doc['stack_bytes'], 12)
+        self.assertEqual(doc['stack_bytes'], 20)
         self.assertEqual(len(doc['segments']), 2)
 
     def test_code_guard_and_data_bounds(self):

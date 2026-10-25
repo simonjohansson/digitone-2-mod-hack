@@ -1,20 +1,23 @@
 # Digitone II mod
 
-Build the selectable C SINE synth and C UNITY filter with DigiHealth:
+Build the selectable C SINE synth and C LOWPASS filter with DigiHealth:
 
 ```sh
 mise run build-c
 ```
 
 Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
-**UNITY** in FLTR. SINE uses synth ID 6; UNITY uses filter ID 7. The synth
+**LOWPASS** in FLTR. SINE uses synth ID 6; LOWPASS uses filter ID 8. The synth
 and filter have separate memory and run through the stock track pipeline.
-The SYN/FLTR pages have no mod controls; AMP, pan and mixer remain native. This is experimental and timing is unqualified.
+The SYN/FLTR pages have no mod controls; AMP, pan and mixer remain native.
+This is experimental and timing is unqualified.
 
 Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.c` for
-DSP changes. UNITY multiplies its input by one; a half-gain build is useful
-for proving that the callback runs. Registration uses `mk2/machines.h` and
-the `mk2_*` contribution tables. Only DN2 OS 1.12 is implemented.
+DSP changes. LOWPASS is a one-pole filter with a fixed coefficient of 1/16
+at 48 kHz (about 493 Hz cutoff). Each voice has its own history, reset when
+the adapter signals a new trigger or entry to the filter. Registration
+uses `mk2/machines.h` and the `mk2_*` contribution tables. Only DN2 OS 1.12
+is implemented.
 
 ## Set up
 
@@ -63,7 +66,7 @@ The C example plays one octave above integer MIDI notes 36..84, rounds
 fractional pitch down and writes zeros outside that range. Elekloader supplies
 the linker placement: each mod has 6 KiB of code including its guard and
 7 KiB of data inside the shared 32 KiB reservation. SINE may declare 128
-stack bytes; this first filter callback is limited to 12. The adapter adds
+stack bytes; the filter callback is limited to 20. The adapter adds
 eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader

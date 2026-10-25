@@ -2,7 +2,7 @@
 python = "3.12.13"
 
 [tasks.build-c]
-description = "Build SINE and UNITY with DigiHealth"
+description = "Build SINE and LOWPASS with DigiHealth"
 run = "python build.py"
 
 [tasks.test]
