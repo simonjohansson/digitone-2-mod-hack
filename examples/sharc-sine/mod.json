@@ -31,6 +31,18 @@
      0
     ]
    ]
+  },
+  {
+   "to": "mk2_voice_pages",
+   "data": "00000000",
+   "relocs": [
+    [
+     0,
+     "abs32",
+     "sym:sine_pages",
+     0
+    ]
+   ]
   }
  ]
 }
