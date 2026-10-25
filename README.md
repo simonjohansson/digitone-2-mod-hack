@@ -18,9 +18,9 @@ The descriptor is in `examples/synth-clone/clone.c`. Its four fields are the
 permanent ID (5 here), the stock synth (0 = FM TONE), the display name and
 the short label. The manifest contributes a pointer to `dn2_synths`; it has
 no firmware hook sites. IDs do not depend on mod load order. Duplicate IDs
-are refused. The registry's missing-ID fallback is unit-tested, but
-end-to-end project reload and missing-mod qualification remain open in
-[issue #59](https://github.com/simonjohansson/elekloader/issues/59). See the [companion contract](vendor/elekloader/docs/MACHINES-DN2.md).
+are refused. Saved projects retain the ID when the mod is absent; the
+missing machine stays out of the selector and renders silence. Reinstalling
+the mod restores its identity and sound, even after saving while absent. See the [companion contract](vendor/elekloader/docs/MACHINES-DN2.md).
 
 The existing master-output SHARC sine remains a separate C baseline:
 
@@ -123,11 +123,17 @@ stock FM TONE reference byte for byte (SHA-256
 The owning track was checked through DN2's allocated voice slots, rather
 than assuming a voice index is a track index.
 
-This is the first #59 increment. The scripted project test wrote ID-5 sound
-records but did not conclusively select the named saved project after
-changing firmware. Project/sound round-trip and missing-mod runtime checks
-remain open; hardware has not been tested. The separate DigiKit proof
-correction is deferred in [#65](https://github.com/simonjohansson/elekloader/issues/65).
+The named-project round-trip, missing-mod load and save/reinstall recovery
+are also qualified in the emulator. `001 NEW PROJECT` restores CLONE after
+switching to stock. With CLONE absent, the stored ID stays 5, the DSP type
+is silent MIDI and output is exactly zero. Saving in that state and then
+reinstalling the mod restores CLONE and the byte-identical reference audio.
+An empty registry leaves stock audio unchanged; removing the companion
+entirely gives the stock loader's FM TONE fallback for the unknown ID.
+
+Hardware, undo and dedicated sound-pool transfer have not been tested.
+The separate DigiKit proof correction remains deferred in
+[#65](https://github.com/simonjohansson/elekloader/issues/65).
 
 ## Sync Elekloader
 
