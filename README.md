@@ -9,8 +9,7 @@ mise run build-c
 Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
 **UNITY** in FLTR. SINE uses synth ID 6; UNITY uses filter ID 7. The synth
 and filter have separate memory and run through the stock track pipeline.
-The parameter-free SYN/FLTR pages are named after the mods; AMP, pan and
-mixer remain native. This is experimental and timing is unqualified.
+The SYN/FLTR pages have no mod controls; AMP, pan and mixer remain native. This is experimental and timing is unqualified.
 
 Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.c` for
 DSP changes. UNITY multiplies its input by one; a half-gain build is useful
