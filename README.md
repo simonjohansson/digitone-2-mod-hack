@@ -29,7 +29,8 @@ cd digitone-2-mod-hack
 Install [mise](https://mise.jdx.dev/) and the ColdFire cross tools. Supply
 your own stock Digitone II OS 1.12 file, SHA-256
 `7e5b8a733d4ab1fdf7e5d22757f7d8eddaa3cbf71d0858874a791844c02ceb35`,
-and a built DN2 DigiHealth module from your fork.
+and a built [DN2 DigiHealth module](https://github.com/simonjohansson/digihealth/tree/codex/dn2-remote-control/dn2#build).
+Set `DN2_DIGIHEALTH` to the module filename printed by that build.
 
 Build the pinned open [Selache](https://github.com/js216/selache) compiler:
 
