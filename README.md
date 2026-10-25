@@ -6,10 +6,10 @@ Build the selectable C SINE synth and CLONE FILTER with DigiHealth:
 mise run build-c
 ```
 
-The current voice-synth firmware is silent on hardware, including stock
-synths; [issue #69](https://github.com/simonjohansson/elekloader/issues/69)
-tracks the blocker. Use this build for emulator development until physical
-audio qualification passes.
+Physical DN2 USB captures confirm selectable SINE and stock FM audio with
+DigiHealth. Broader multitrack, control and project-reload qualification
+continues in [issue #67](https://github.com/simonjohansson/elekloader/issues/67).
+This remains experimental; no timing qualification is claimed.
 
 Load `out/c/firmware.syx` in the emulator. In **FUNC+SYN**, select **SINE** in SYN and
 **CLONE FILTER** in FLTR. Both use ID 6 in independent namespaces. The
