@@ -100,6 +100,12 @@ new firmware. The source checkout and this consumer both use the linear
 
 ## Qualification
 
+The current C build includes SINE and CLONE FILTER. The filter
+registration, native controls, preset copy/undo, saved project and
+missing-filter behavior are checked in the coupled emulator. See the
+[filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md) and
+[issue #62](https://github.com/simonjohansson/elekloader/issues/62).
+
 This track-synth candidate is qualified in the coupled DigiKit emulator,
 with DigiHealth. The checked cases include native selection, overlapping
 notes, all 16 allocated slots, 24 retriggers including slot reuse, release,
