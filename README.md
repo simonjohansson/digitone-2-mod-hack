@@ -99,7 +99,6 @@ original firmware and audio. Saved-project and missing-mod results are
 recorded in the companion's [qualification record](vendor/elekloader/docs/MACHINES-DN2-VOICE.md).
 
 No hardware or timing qualification is claimed for this new track-synth
-callback. Restoring its stock hook exposes FM TONE beneath the replacement;
-its possible extra oscillator cost is tracked in #66 in the Elekloader
-fork. The assembly master-output reference has a different callback
-contract and is outside this track-synth qualification. #65 remains deferred.
+callback; [the physical demo is tracked separately](https://github.com/simonjohansson/elekloader/issues/67). Restoring its stock hook exposes FM TONE beneath the replacement;
+its possible extra oscillator cost is tracked in [Elekloader #66](https://github.com/simonjohansson/elekloader/issues/66). The assembly master-output reference has a different callback
+contract and is outside this track-synth qualification. [Elekloader #65](https://github.com/simonjohansson/elekloader/issues/65) remains deferred.
