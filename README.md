@@ -16,10 +16,20 @@ independent phase for each of 16 voice slots and resets phase on retrigger.
 Integer MIDI pitches 36..84 are supported; other pitches produce zero
 oscillator samples. Fractional pitch is rounded down to a MIDI note.
 
-Every build includes core-dn2 0.2, machines-dn2 0.2 and the configured
-DigiHealth module. There are no mod-local firmware hook sites. SINE uses
+Every build includes core-dn2 0.2 and the configured DigiHealth module.
+The selectable C and clone builds also include machines-dn2 0.3. There are no mod-local firmware hook sites. SINE uses
 permanent ID **6**; ID **5** belongs to the separate CLONE fixture. Keep
 these identities when changing code or combining mods.
+
+The same firmware registers **CLONE FILTER** in the FLTR category of
+**FUNC+SYN**. Select it on the SINE track: it runs the stock MULTI-MODE
+filter and retains its own permanent filter ID **6**, independently of
+SINE's synth ID. Turn the native cutoff/resonance controls as usual.
+`examples/filter-clone/machine.c` selects the stock filter to clone.
+All machine descriptors use `mk2/machines.h` and the `mk2_*` registration
+tables. Only DN2 is implemented; the names do not enable DT2.
+A missing filter registration keeps its saved ID and falls back to
+MULTI-MODE, so keep backups when changing the installed mod set.
 
 ## Set up once
 
@@ -56,7 +66,7 @@ mise run build-c
 
 | Command | Result |
 |---|---|
-| `mise run build-c` | Selectable C SINE, `out/c/firmware.syx` |
+| `mise run build-c` | Selectable C SINE and CLONE FILTER, `out/c/firmware.syx` |
 | `mise run build-clone` | Stock FM TONE clone named CLONE, `out/clone/firmware.syx`; no SHARC compiler needed |
 | `mise run build-asm` | Earlier assembly master-output reference, `out/asm/firmware.syx`; it is not a selectable track synth |
 | `mise run test` | Producer, independent-phase and retrigger checks without firmware execution |

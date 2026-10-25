@@ -157,6 +157,9 @@ def main():
         if args.kind == 'c':
             companion, _ = sdk.build(str(VENDOR / 'mods/machines-dn2'), str(stock), str(out / 'machines'))
             machines.append(companion)
+            filter_module, _ = sdk.build(str(ROOT / "examples/filter-clone"), str(stock),
+                                         str(out / "filter"))
+            machines.append(filter_module)
         module, _ = sdk.build(str(stage), str(stock), str(out / 'module'))
         require(lint.main([module, '--stock', str(stock), '--with', core,
                            '--with', str(health), *[arg for m in machines for arg in ('--with', m)]]) == 0, 'module lint failed')
@@ -171,12 +174,16 @@ def main():
               'toolchain': {'commit': revision, 'tools_sha256': {name: sha(tools / name)
                             for name in ('selcc', 'selas', 'seld', 'seldump')}},
               'sources_sha256': {str(p.relative_to(ROOT)): sha(p)
-                                 for p in ([kernel, source_dir / 'machine.c', source_dir / 'mod.json', layout]
+                                 for p in ([kernel, source_dir / 'machine.c', source_dir / 'mod.json', layout,
+                                            ROOT / "examples/filter-clone/machine.c", ROOT / "examples/filter-clone/mod.json"]
                                            if args.kind == 'c' else [kernel, shared / 'entry.c', layout])},
               'stock_sha256': sha(stock), 'digihealth_sha256': sha(health),
               'artifact': str(payload), 'artifact_sha256': sha(payload),
               'module': module, 'module_sha256': sha(module),
               'firmware': str(firmware), 'firmware_sha256': sha(firmware)}
+    report['filter_id'] = 6 if args.kind == 'c' else None
+    report['modules'] = {elemod.load_any(m).id: {"path": m, "sha256": sha(m)}
+                         for m in [core, str(health), *machines, module]}
     report['machine_id'] = 6 if args.kind == 'c' else None
     report['master_output_replacement'] = args.kind == 'asm'
     report['submodule_commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=VENDOR, text=True).strip()
