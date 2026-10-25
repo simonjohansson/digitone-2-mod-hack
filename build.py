@@ -150,8 +150,7 @@ def main():
         patch.save(outputs, manifest, str(firmware))
     except (sdk.BuildError, patch.PatchError) as error:
         raise ValueError(str(error)) from error
-    report = {'kind': 'c',
-              'host': {'system': platform.platform(), 'machine': platform.machine(), 'python': sys.version},
+    report = {'host': {'system': platform.platform(), 'machine': platform.machine(), 'python': sys.version},
               'toolchain': {'commit': revision, 'tools_sha256': {name: sha(tools / name)
                             for name in ('selcc', 'selas', 'seld', 'seldump')}},
               'sources_sha256': {str(p.relative_to(ROOT)): sha(p) for p in
@@ -165,7 +164,6 @@ def main():
     report['modules'] = {elemod.load_any(m).id: {"path": m, "sha256": sha(m)}
                          for m in [core, str(health), *machines, module]}
     report['machine_id'] = 6
-    report['master_output_replacement'] = False
     report['submodule_commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=VENDOR, text=True).strip()
     (out / 'build-report.json').write_text(json.dumps(report, indent=2) + '\n')
     print('BUILT ' + str(firmware), flush=True)
