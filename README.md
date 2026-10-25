@@ -81,7 +81,7 @@ eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader
 
-The submodule tracks the public Elekloader fork's `machines` branch.
+The submodule tracks the public Elekloader fork's `syn-pages` branch.
 For local Elekloader development, keep the checkout's remote on your
 filesystem with this uncommitted setting:
 
@@ -100,5 +100,4 @@ mise run test
 mise run build-c
 ```
 
-Commit the submodule pointer after checking the build. All feature work is
-committed directly to `machines` in each repository.
+Commit the submodule pointer after checking the build.
