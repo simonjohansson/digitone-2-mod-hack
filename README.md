@@ -21,6 +21,11 @@ is implemented.
 
 ## Set up
 
+```sh
+git clone --recurse-submodules https://github.com/simonjohansson/digitone-2-mod-hack.git
+cd digitone-2-mod-hack
+```
+
 Install [mise](https://mise.jdx.dev/) and the ColdFire cross tools. Supply
 your own stock Digitone II OS 1.12 file, SHA-256
 `7e5b8a733d4ab1fdf7e5d22757f7d8eddaa3cbf71d0858874a791844c02ceb35`,
@@ -71,8 +76,18 @@ eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader
 
-The submodule uses the local `~/src/elekloader` repository and tracks its
-linear `machines` branch:
+The submodule tracks the public Elekloader fork's `machines` branch.
+For local Elekloader development, keep the checkout's remote on your
+filesystem with this uncommitted setting:
+
+```sh
+git config submodule.vendor/elekloader.url "$HOME/src/elekloader"
+cd vendor/elekloader
+git config remote.origin.url "$HOME/src/elekloader"
+cd ../..
+```
+
+Then sync from the repository root:
 
 ```sh
 git -c protocol.file.allow=always submodule update --remote vendor/elekloader
