@@ -1,25 +1,21 @@
 # Digitone II mod
 
-Build the selectable C SINE synth and CLONE FILTER with DigiHealth:
+Build the selectable C SINE synth and C UNITY filter with DigiHealth:
 
 ```sh
 mise run build-c
 ```
 
-Physical DN2 USB captures confirm selectable SINE and stock FM audio with
-DigiHealth. Broader multitrack, control and project-reload qualification
-continues in [issue #67](https://github.com/simonjohansson/elekloader/issues/67).
-This remains experimental; no timing qualification is claimed.
+Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
+**UNITY** in FLTR. SINE uses synth ID 6; UNITY uses filter ID 7. The synth
+and filter have separate memory and run through the stock track pipeline.
+The parameter-free SYN/FLTR pages are named after the mods; AMP, pan and
+mixer remain native. This is experimental and timing is unqualified.
 
-Load `out/c/firmware.syx` in the emulator. In **FUNC+SYN**, select **SINE** in SYN and
-**CLONE FILTER** in FLTR. Both use ID 6 in independent namespaces. The
-filter clones stock MULTI-MODE; AMP, pan and mixer remain native. The SYN
-page has no controls pretending to change the oscillator.
-
-Edit `examples/sharc-sine/sine.c` for DSP changes, or
-`examples/filter-clone/machine.c` to choose the stock filter to clone.
-Registration uses `mk2/machines.h` and the `mk2_*` contribution tables.
-Only DN2 OS 1.12 is implemented.
+Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.c` for
+DSP changes. UNITY multiplies its input by one; a half-gain build is useful
+for proving that the callback runs. Registration uses `mk2/machines.h` and
+the `mk2_*` contribution tables. Only DN2 OS 1.12 is implemented.
 
 ## Set up
 
@@ -59,15 +55,17 @@ DigiHealth. A failed build removes stale firmware. Configuration, firmware
 and build reports are ignored.
 
 `mise run test` checks malformed compiler output, artifact bounds and
-independent per-voice phase/retrigger state. Native selection, controls,
-preset copy, saved projects and missing registrations require runtime
-checks. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
+independent per-voice phase/retrigger state and the filter's sample bounds.
+Native selection, controls, preset copy, saved projects and missing
+registrations require runtime checks. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
 and [filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md).
 
 The C example plays one octave above integer MIDI notes 36..84, rounds
-fractional pitch down and writes zeros outside that range. The fixed 32 KiB
-layout leaves 14 KiB of code including its guard, and 15 KiB of data. An
-edited kernel needs no Elekloader instruction allowlist update.
+fractional pitch down and writes zeros outside that range. Elekloader supplies
+the linker placement: each mod has 6 KiB of code including its guard and
+7 KiB of data inside the shared 32 KiB reservation. SINE may declare 128
+stack bytes; this first filter callback is limited to 12. The adapter adds
+eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader
 

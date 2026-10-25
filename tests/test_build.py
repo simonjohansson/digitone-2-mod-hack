@@ -19,7 +19,7 @@ def executable(code=bytes.fromhex('0001000100010001'), data_bytes=4):
     struct.pack_into('<HHII', raw, 16, 2, 0x85, 1, 0xbc8400)
     raw += code + bytes(data_bytes)
     dump = (f"0001 progbits 00000007 00bc8400 00000034 {len(code):08x}:B 0 0 4 1 'probe_code'\n"
-            f"0002 progbits 00000003 20094000 {52+len(code):08x} {data_bytes:08x}:B 0 0 4 0 'probe_data'\n"
+            f"0002 progbits 00000003 20092000 {52+len(code):08x} {data_bytes:08x}:B 0 0 4 0 'probe_data'\n"
             "0003 00000001 00bc8400 00000000 function global 00000000 'sharc_voice_render.'\n")
     return bytes(raw), dump
 
@@ -31,23 +31,34 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(doc['machine_id'], 6)
         self.assertEqual(doc['entries'], {'render_offset_bytes': 2048})
         self.assertEqual(len(bytes.fromhex(doc['segments'][0]['hex'])), 2048)
-        self.assertEqual(len(bytes.fromhex(doc['segments'][1]['hex'])), 14336)
+        self.assertEqual(len(bytes.fromhex(doc['segments'][1]['hex'])), 6144)
         self.assertEqual(len(bytes.fromhex(doc['segments'][2]['hex'])), 4)
-        self.assertEqual(doc['zero'][-1], {'offset_bytes': 31744, 'size_bytes': 1024})
+        self.assertEqual(doc['zero'][-1], {'offset_bytes': 15360, 'size_bytes': 1024})
         changed = artifact(*executable(bytes.fromhex('c001c00100010001')))
         self.assertNotEqual(changed['segments'][1], doc['segments'][1])
 
+    def test_stateless_filter_uses_its_own_region(self):
+        raw, dump = executable(data_bytes=0)
+        raw = bytearray(raw)
+        struct.pack_into('<I', raw, 24, 0xbca400)
+        dump = dump.replace('00bc8400', '00bca400').replace('20092000', '20096000').replace('sharc_voice_render.', 'sharc_filter_render.')
+        doc = artifact(bytes(raw), dump, 'filter', 7)
+        self.assertEqual(doc['abi'], 'dn2-filter-mono32-l2-v1')
+        self.assertEqual(doc['machine_id'], 7)
+        self.assertEqual(doc['stack_bytes'], 12)
+        self.assertEqual(len(doc['segments']), 2)
+
     def test_code_guard_and_data_bounds(self):
-        for count, accepted in ((14272, True), (14274, False)):
+        for count, accepted in ((6080, True), (6082, False)):
             with self.subTest(code_bytes=count):
                 if accepted:
                     artifact(*executable(bytes(count)))
                 else:
                     with self.assertRaisesRegex(ValueError, '64-byte NOP read-ahead guard'):
                         artifact(*executable(bytes(count)))
-        artifact(*executable(data_bytes=15360))
+        artifact(*executable(data_bytes=7168))
         with self.assertRaisesRegex(ValueError, 'data must fit its area'):
-            artifact(*executable(data_bytes=15364))
+            artifact(*executable(data_bytes=7172))
 
     @unittest.skipUnless(shutil.which('git'), 'needs git')
     def test_toolchain_pin_and_clean_source(self):
@@ -76,12 +87,12 @@ class ArtifactTests(unittest.TestCase):
             (raw, dump.replace('progbits 00000007', 'progbits 00000003'), 'section attributes'),
             (raw, dump.replace('progbits', 'note', 1), 'allocated section must be progbits'),
             (raw, dump.replace('00000001 00bc8400', '00000001 00bc8410'), 'callback outside linked code'),
-            (raw, dump.replace('20094000', '20098000'), 'data must fit its area'),
-            (raw, dump.replace('00bc8400 00000034', '00bc8500 00000034'), '14336-byte area'),
+            (raw, dump.replace('20092000', '20098000'), 'data must fit its area'),
+            (raw, dump.replace('00bc8400 00000034', '00bc8500 00000034'), '6144-byte area'),
             (raw, dump.replace('progbits', 'rela', 1), 'unresolved relocation'),
             (raw, dump + "0006 UNDEF 00000000 00000000 function global 00000000 'missing'\n", 'unresolved symbol'),
-            (raw, dump + "0006 progbits 00000003 20094000 00000034 00000004:B 0 0 4 0 'extra'\n", 'only probe_code'),
-            (*executable(bytes(14340)), '14336-byte area'),
+            (raw, dump + "0006 progbits 00000003 20092000 00000034 00000004:B 0 0 4 0 'extra'\n", 'only probe_code'),
+            (*executable(bytes(6148)), '6144-byte area'),
         ]
         for data, inspector, message in cases:
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
