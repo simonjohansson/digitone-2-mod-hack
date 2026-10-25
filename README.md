@@ -9,8 +9,8 @@ mise run build-c
 Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
 **LOWPASS** in FLTR. SINE uses synth ID 6; LOWPASS uses filter ID 8. The synth
 and filter have separate memory and run through the stock track pipeline.
-SINE's SYN page shows two stock knobs, LEV and TUNE, and six empty slots;
-the knobs save with the sound but do not change it yet. FLTR has no mod
+SINE has two SYN pages: LEV and TUNE on SYN1, OCT and FINE on SYN2, the
+other slots empty; the knobs save with the sound but do not change it yet. FLTR has no mod
 controls; AMP, pan and mixer remain native.
 This is experimental and timing is unqualified.
 
