@@ -1,13 +1,6 @@
-# C sine
+# SINE track synth
 
-Edit `sine.c` and run `mise run build-c` from the repository root.
-The command compiles this source and `entry.c`, links them with `l2.ldf`,
-and builds verified DN2 firmware with the Elekloader submodule and DigiHealth.
-
-The sine uses a uint32 phase accumulator and a positive half-table. The
-local phase edit advances twice per sample, so the output is one octave
-above the MIDI note. `entry.c` applies the note-held flag and a 32-sample
-attack/release ramp.
-
-See the [setup and build guide](../../README.md) and
-[DSP function interface](../../vendor/elekloader/docs/SHARC-DN2-ABI.md).
+Edit `sine.c`, then run `mise run build-c` from the repository root.
+The build registers SINE in the native SYN category, with CLONE FILTER in
+FLTR, and includes DigiHealth. See the [repository instructions](../../README.md)
+and the [voice contract](../../vendor/elekloader/docs/MACHINES-DN2-VOICE.md).

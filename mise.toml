@@ -2,17 +2,9 @@
 python = "3.12.13"
 
 [tasks.build-c]
-description = "Build the selectable C SINE track synth with DigiHealth"
-run = "python build.py c"
-
-[tasks.build-asm]
-description = "Assemble the current SHARC sine and build DN2 firmware"
-run = "python build.py asm"
+description = "Build SINE and CLONE FILTER with DigiHealth"
+run = "python build.py"
 
 [tasks.test]
 description = "Check the artifact producer without firmware or compilers"
 run = "python -m unittest discover -s tests"
-
-[tasks.build-clone]
-description = "Build the selectable stock synth clone with DigiHealth"
-run = "python build_clone.py"

@@ -1,44 +1,29 @@
-# Digitone II mod examples
+# Digitone II mod
 
-Edit `examples/sharc-sine/sine.c`, then build a selectable track synth:
+Build the selectable C SINE synth and CLONE FILTER with DigiHealth:
 
 ```sh
 mise run build-c
 ```
 
-Load `out/c/firmware.syx`. Open **FUNC+SYN**, choose **SINE**, and press
-**YES** to assign it to the selected track. It uses the stock AMP envelope,
-filter, pan and mixer; other tracks can keep their stock synths. The SYN
-page has no FM controls pretending to affect SINE. The native machine selector identifies the engine as SINE.
+Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
+**CLONE FILTER** in FLTR. Both use ID 6 in independent namespaces. The
+filter clones stock MULTI-MODE; AMP, pan and mixer remain native. The SYN
+page has no controls pretending to change the oscillator.
 
-The C example deliberately plays one octave above its MIDI input. It has
-independent phase for each of 16 voice slots and resets phase on retrigger.
-Integer MIDI pitches 36..84 are supported; other pitches produce zero
-oscillator samples. Fractional pitch is rounded down to a MIDI note.
+Edit `examples/sharc-sine/sine.c` for DSP changes, or
+`examples/filter-clone/machine.c` to choose the stock filter to clone.
+Registration uses `mk2/machines.h` and the `mk2_*` contribution tables.
+Only DN2 OS 1.12 is implemented.
 
-Every build includes core-dn2 0.2 and the configured DigiHealth module.
-The selectable C and clone builds also include machines-dn2 0.3. There are no mod-local firmware hook sites. SINE uses
-permanent ID **6**; ID **5** belongs to the separate CLONE fixture. Keep
-these identities when changing code or combining mods.
+## Set up
 
-The same firmware registers **CLONE FILTER** in the FLTR category of
-**FUNC+SYN**. Select it on the SINE track: it runs the stock MULTI-MODE
-filter and retains its own permanent filter ID **6**, independently of
-SINE's synth ID. Turn the native cutoff/resonance controls as usual.
-`examples/filter-clone/machine.c` selects the stock filter to clone.
-All machine descriptors use `mk2/machines.h` and the `mk2_*` registration
-tables. Only DN2 is implemented; the names do not enable DT2.
-A missing filter registration keeps its saved ID and falls back to
-MULTI-MODE, so keep backups when changing the installed mod set.
+Install [mise](https://mise.jdx.dev/) and the ColdFire cross tools. Supply
+your own stock Digitone II OS 1.12 file, SHA-256
+`7e5b8a733d4ab1fdf7e5d22757f7d8eddaa3cbf71d0858874a791844c02ceb35`,
+and a built DN2 DigiHealth module from your fork.
 
-## Set up once
-
-Install [mise](https://mise.jdx.dev/), the ColdFire cross tools, and your
-DN2 DigiHealth mod from `~/src/digihealth`. Supply your own stock Digitone
-II OS 1.12 file, SHA-256
-`7e5b8a733d4ab1fdf7e5d22757f7d8eddaa3cbf71d0858874a791844c02ceb35`.
-
-Build the qualified [Selache](https://github.com/js216/selache) revision:
+Build the pinned open [Selache](https://github.com/js216/selache) compiler:
 
 ```sh
 git clone https://github.com/js216/selache.git "$HOME/src/selache"
@@ -47,74 +32,48 @@ git switch --detach 2b26d3b75c53063575bc5c820fa0d38879335187
 mise exec rust@1.98.1 -- cargo build --release --locked -p selcc -p selas -p seld -p seldump
 ```
 
-Back in this repository:
+In this repository:
 
 ```sh
 git -c protocol.file.allow=always submodule update --init
 cp mise.local.example.toml mise.local.toml
-# Set DN2_STOCK, SELACHE and DN2_DIGIHEALTH in mise.local.toml.
+# Set DN2_STOCK, SELACHE and DN2_DIGIHEALTH.
 mise trust
 mise install
 mise run build-c
 ```
 
-`SELACHE` names the clean compiler checkout with all four tools built.
-`DN2_DIGIHEALTH` is required; this candidate was checked with DigiHealth
-1.5. Python 3.12.13 is managed by mise. No Python packages are required.
+`SELACHE` points to the clean compiler checkout with its four tools built.
+Python 3.12.13 is managed by mise; no Python packages are required.
 
-## Build and sync
+## Build and test
 
-| Command | Result |
-|---|---|
-| `mise run build-c` | Selectable C SINE and CLONE FILTER, `out/c/firmware.syx` |
-| `mise run build-clone` | Stock FM TONE clone named CLONE, `out/clone/firmware.syx`; no SHARC compiler needed |
-| `mise run build-asm` | Earlier assembly master-output reference, `out/asm/firmware.syx`; it is not a selectable track synth |
-| `mise run test` | Producer, independent-phase and retrigger checks without firmware execution |
+`mise run build-c` compiles the current source, packages it through the
+Elekloader submodule and writes verified firmware with core, machines and
+DigiHealth. A failed build removes stale firmware. Configuration, firmware
+and build reports are ignored.
 
-The producer compiles current source, reads the linked function entry,
-packages it through the Elekloader submodule, checks the mod combination
-and writes verified firmware. Each output folder is cleared before a
-build, so a failed compile leaves no stale firmware. Build reports in
-`out/<kind>/build-report.json` record the sources, compiler, submodule,
-modules and firmware. Configuration, firmware and captures are ignored.
+`mise run test` checks malformed compiler output, artifact bounds and
+independent per-voice phase/retrigger state. Native selection, controls,
+preset copy, saved projects and missing registrations require runtime
+checks. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
+and [filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md).
 
-The C command selects the voice layout automatically. The 32 KiB area
-includes its pinned adapter and state; the author area has 14 KiB of code
-(including the guard) and 15 KiB of data. A source edit needs no Elekloader
-allowlist update. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
-for callback, register and stack requirements.
+The C example plays one octave above integer MIDI notes 36..84, rounds
+fractional pitch down and writes zeros outside that range. The fixed 32 KiB
+layout leaves 14 KiB of code including its guard, and 15 KiB of data. An
+edited kernel needs no Elekloader instruction allowlist update.
 
-The submodule fetches `machines` from the local Elekloader checkout:
+## Sync Elekloader
+
+The submodule uses the local `~/src/elekloader` repository and tracks its
+linear `machines` branch:
 
 ```sh
-cd vendor/elekloader
-git -c protocol.file.allow=always fetch origin machines
-git switch --detach FETCH_HEAD
-cd ../..
+git -c protocol.file.allow=always submodule update --remote vendor/elekloader
+mise run test
 mise run build-c
 ```
 
-Commit the updated submodule pointer in this repository after checking the
-new firmware. The source checkout and this consumer both use the linear
-`machines` workflow.
-
-## Qualification
-
-The current C build includes SINE and CLONE FILTER. The filter
-registration, native controls, preset copy/undo, saved project and
-missing-filter behavior are checked in the coupled emulator. See the
-[filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md) and
-[issue #62](https://github.com/simonjohansson/elekloader/issues/62).
-
-This track-synth candidate is qualified in the coupled DigiKit emulator,
-with DigiHealth. The checked cases include native selection, overlapping
-notes, all 16 allocated slots, 24 retriggers including slot reuse, release,
-stock-track coexistence, AMP volume and filter response. A half-gain C edit
-changes the output as expected, and restoring the source reproduces the
-original firmware and audio. Saved-project and missing-mod results are
-recorded in the companion's [qualification record](vendor/elekloader/docs/MACHINES-DN2-VOICE.md).
-
-No hardware or timing qualification is claimed for this new track-synth
-callback; [the physical demo is tracked separately](https://github.com/simonjohansson/elekloader/issues/67). Restoring its stock hook exposes FM TONE beneath the replacement;
-its possible extra oscillator cost is tracked in [Elekloader #66](https://github.com/simonjohansson/elekloader/issues/66). The assembly master-output reference has a different callback
-contract and is outside this track-synth qualification. [Elekloader #65](https://github.com/simonjohansson/elekloader/issues/65) remains deferred.
+Commit the submodule pointer after checking the build. All feature work is
+committed directly to `machines` in each repository.
