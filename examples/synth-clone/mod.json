@@ -1,0 +1,13 @@
+{
+ "id": "synth-clone", "version": "0.1",
+ "title": "CLONE", "license": "GPL-2.0-or-later",
+ "description": "A selectable FM TONE clone with its own saved machine ID.",
+ "device": "digitone-mk2", "os": "1.12",
+ "sources": ["clone.c"],
+ "contribute": [
+  {"to": "dn2_synths", "order": 50, "data": "00000000",
+   "relocs": [[0, "abs32", "sym:synth_clone", 0]]}
+ ],
+ "resources": {"core": "0.2"},
+ "requires": ["core", "machines-dn2"]
+}

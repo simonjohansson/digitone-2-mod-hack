@@ -12,3 +12,7 @@ run = "python build.py asm"
 [tasks.test]
 description = "Check the artifact producer without firmware or compilers"
 run = "python -m unittest discover -s tests"
+
+[tasks.build-clone]
+description = "Build the selectable stock synth clone with DigiHealth"
+run = "python build_clone.py"

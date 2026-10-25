@@ -123,5 +123,25 @@ class ArtifactTests(unittest.TestCase):
             self.assertFalse(firmware.exists())
 
 
+class CloneBuildTests(unittest.TestCase):
+    def test_failed_clone_compile_removes_previous_firmware(self):
+        import build_clone
+        from elekloader.sdk.build import BuildError
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work)
+            stock = root / 'stock.syx'
+            stock.touch()
+            firmware = root / 'out/clone/firmware.syx'
+            firmware.parent.mkdir(parents=True)
+            firmware.write_bytes(b'stale')
+            args = ['build_clone.py', '--stock', str(stock), '--digihealth', str(stock)]
+            with patch.object(build_clone, 'ROOT', root), patch.object(sys, 'argv', args), \
+                    patch('elekloader.elemod.load_any', return_value=Mock(id='digihealth')), \
+                    patch('elekloader.sdk.build.build', side_effect=BuildError('compile failed')):
+                with self.assertRaisesRegex(ValueError, 'compile failed'):
+                    build_clone.main()
+            self.assertFalse(firmware.exists())
+
+
 if __name__ == '__main__':
     unittest.main()
