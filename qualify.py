@@ -299,7 +299,7 @@ class Target:
         for _ in range(3 if not empty_slot(row) else 2):  # overwrite 'NAME'? Y/N, the name editor, YES:SAVE
             self.tap('YES')
             self.wait(800)
-        self.wait(5000)
+        self.wait(15000)  # keys are not served while the project is written
         self.tap('NO', 'NO', 'NO')
         active = self.project_row()  # a saved project becomes the active one
         self.tap('NO', 'NO', 'NO')
