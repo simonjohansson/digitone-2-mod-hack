@@ -16,5 +16,4 @@ static void curve(uint32_t freq, uint32_t reso, uint8_t y[51])
     }
 }
 
-/* shortcut: clone as host type, replaced by #83's host type in cleanup */
-const struct mk2_filter lowpass = {8, 1, "LOWPASS", "LOWPASS", curve};
+const struct mk2_filter lowpass = {8, "LOWPASS", "LOWPASS", curve};
