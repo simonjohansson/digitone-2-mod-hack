@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// A resonant 2-pole low-pass: a state-variable filter in topology-preserving form,
-// stable at any cutoff. Each slot keeps its own two integrator states. Written in
-// assembly so it needs no stack: the adapter keeps every register it uses.
+// A resonant 2-pole low-pass or high-pass: a state-variable filter in topology-preserving
+// form, stable at any cutoff, with G (MODE) picking the output. Each slot keeps its own two
+// integrator states. Written in assembly so it needs no stack: the adapter keeps every
+// register it uses.
 .SECTION/SW seg_swco;
 .GLOBAL sharc_filter_render.;
 
-// R4 points at struct dn2_filter_input: samples, slot, flags, cutoff, resonance.
+// R4 points at struct dn2_filter_input: samples, slot, flags, cutoff, resonance, g.
 sharc_filter_render.:
     I4=R4;
     R9=DM(0,I4);            // samples
@@ -105,23 +106,37 @@ fraction:
     R13=0;
     R14=0;
 run:
+    // MODE 0..63 (g below 0.5) is the low-pass, 64..127 the high-pass: R4 is 0 or 1.
+    R1=DM(5,I4);
+    R0=0x3f000000;          // 0.5
+    R4=0;
+    COMP(F1,F0);
+    IF LT JUMP mode;
+    R4=0x3f800000;          // 1.0
+mode:
     R15=32;
 sample:
     I4=R9;
-    R1=DM(I4,M5);
-    F1=F1-F14;              // v3 = x - ic2
+    R1=DM(I4,M5);           // x
+    F0=F1-F14;              // v3 = x - ic2
     F2=F5*F13;
     F2=F2+F14;
-    F7=F8*F1;
-    F2=F2+F7;               // v2 = ic2 + a2 ic1 + a3 v3
+    F7=F8*F0;
+    F2=F2+F7;               // v2 = ic2 + a2 ic1 + a3 v3: the low-pass
     F7=F3*F13;
-    F0=F5*F1;
-    F7=F7+F0;               // v1 = a1 ic1 + a2 v3
-    F7=F7*F6;
-    F13=F7-F13;             // ic1 = 2 v1 - ic1
-    F7=F2*F6;
-    F14=F7-F14;             // ic2 = 2 v2 - ic2
-    DM(I4,M5)=R2;           // the low-pass output
+    F0=F5*F0;
+    F7=F7+F0;               // v1 = a1 ic1 + a2 v3: the band-pass
+    F0=F7*F6;
+    F13=F0-F13;             // ic1 = 2 v1 - ic1
+    F0=F2*F6;
+    F14=F0-F14;             // ic2 = 2 v2 - ic2
+    F7=F12*F7;
+    F1=F1-F7;
+    F1=F1-F2;               // the high-pass: x - k v1 - v2
+    F1=F1-F2;
+    F1=F1*F4;
+    F2=F2+F1;               // v2 + mode (hp - v2)
+    DM(I4,M5)=R2;
     R0=4;
     R9=R9+R0;
     R15=R15-1;

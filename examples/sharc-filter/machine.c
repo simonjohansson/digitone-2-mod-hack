@@ -16,4 +16,6 @@ static void curve(uint32_t freq, uint32_t reso, uint8_t y[51])
     }
 }
 
-const struct mk2_filter lowpass = {8, "LOWPASS", "LOWPASS", curve};
+/* G picks the output: 0..63 low-pass, 64..127 high-pass. */
+static const struct mk2_param mode = {"MODE", 0};
+const struct mk2_filter lowpass = {8, "LOWPASS", "LOWPASS", curve, &mode};

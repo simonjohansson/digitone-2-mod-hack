@@ -18,8 +18,8 @@ def tone(hz, seconds=0.8, amplitude=0.01):
     return np.concatenate([silence, amplitude * np.sin(2 * np.pi * hz * t), silence])
 
 
-def svf(x, freq, reso=0):
-    """The example LOWPASS, sample by sample, with the envelope at rest."""
+def svf(x, freq, reso=0, highpass=False):
+    """The example LOWPASS, sample by sample, with the envelope at rest; MODE picks HIGHPASS."""
     cutoff = min(max(440 * 2 ** ((freq - 69) / 12), 20), 16000)
     v = np.pi * cutoff / qualify.RATE
     g = v * (15 - v * v) / (15 - 6 * v * v)
@@ -30,7 +30,7 @@ def svf(x, freq, reso=0):
     for i, s in enumerate(x):
         v3 = s - ic2
         v1, v2 = a1 * ic1 + a2 * v3, ic2 + a2 * ic1 + a3 * v3
-        ic1, ic2, out[i] = 2 * v1 - ic1, 2 * v2 - ic2, v2
+        ic1, ic2, out[i] = 2 * v1 - ic1, 2 * v2 - ic2, s - k * v1 - v2 if highpass else v2
     return out
 
 
@@ -51,8 +51,9 @@ class MeasurementTests(unittest.TestCase):
         hz = qualify.pitch_of(qualify.SINE, 60)
         x = tone(hz)
         for freq, reso in ((50, 0), (72, 0), (90, 0), (72, 100), (72, 120)):
-            got = qualify.level_db(svf(x, freq, reso)) - qualify.level_db(x)
-            self.assertAlmostEqual(got, qualify.svf_db(hz, freq, reso), delta=0.1)
+            for highpass in (False, True):
+                got = qualify.level_db(svf(x, freq, reso, highpass)) - qualify.level_db(x)
+                self.assertAlmostEqual(got, qualify.svf_db(hz, freq, reso, highpass), delta=0.1)
         self.assertAlmostEqual(qualify.svf_db(1e-3, 72), 0, delta=1e-6)
 
     def test_tone_level_separates_two_notes(self):
