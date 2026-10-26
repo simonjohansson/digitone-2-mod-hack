@@ -9,7 +9,9 @@ mise run build-c
 Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
 **LOWPASS** in FLTR. SINE uses synth ID 6; LOWPASS uses filter ID 8. The synth
 and filter have separate memory and run through the stock track pipeline.
-The SYN/FLTR pages have no mod controls; AMP, pan and mixer remain native.
+SINE's SYN page has no controls. LOWPASS shows LOWPASS 4's FLTR page and
+keeps its values, but the kernel does not read them yet. AMP, pan and mixer
+remain native.
 This is experimental and timing is unqualified.
 
 Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.c` for
@@ -78,14 +80,20 @@ from RAM, opens the stock filter over MIDI, records notes 36 and 84,
 and checks the FLTR page. Every note must sound at its pitch, and
 LOWPASS must take note 84 down against note 36 by its one-pole response
 at the synth's pitch, within -2/+3 dB, compared with the open stock
-filter. Nothing is checked by hand. The report, the
-recordings and the firmware's SHA-256 go to `out/qualify/`.
+filter. LOWPASS's page must match LOWPASS 4's pixel for pixel, except for
+an empty response graph. Each of its controls must move with its knob
+(pre-delay with FUNC+A), its CC and its NRPN, read back from RAM. The
+filter and its values must survive SAVE PROJECT AS into slot 128 and
+LOAD PROJECT. Nothing is checked by hand. The report, the recordings and
+the firmware's SHA-256 go to `out/qualify/`.
 
 The unit part flashes the candidate with `elektroid-cli` and confirms it
 with DigiHealth's remote YES, so the installed firmware must include
-DigiHealth. It runs only in the project recorded as the scratch project,
-and reloads that project afterwards, discarding the run's changes. Load
-a project you can lose, then record it once:
+DigiHealth. It runs only in the project recorded as the scratch project.
+It saves only into slot 128, and only when that slot is empty or holds
+the project an earlier run saved there. Afterwards it loads the scratch
+project again, discarding the run's changes. Load a project you can
+lose, then record it once:
 
 ```sh
 mise run qualify -- --remember-scratch

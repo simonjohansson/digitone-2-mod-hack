@@ -47,14 +47,23 @@ class MeasurementTests(unittest.TestCase):
     def test_page_regions(self):
         empty = np.zeros((64, 128), dtype=np.uint8)
         empty[41:56:2, 25:125:13] = 1  # dotted outlines only
-        self.assertTrue(qualify.cells_empty(empty))
         self.assertFalse(qualify.labels_shown(empty))
         labelled = empty.copy()
         labelled[60, 30:40] = 1
         self.assertTrue(qualify.labels_shown(labelled))
-        knob = empty.copy()
-        knob[48, 27:40] = 1
-        self.assertFalse(qualify.cells_empty(knob))
+
+    def test_page_as_stock_needs_an_empty_graph_and_everything_else_equal(self):
+        stock = np.zeros((64, 128), dtype=np.uint8)
+        stock[60, 30:40] = 1
+        stock[45, 25:60] = 1  # the response curve
+        custom = stock.copy()
+        custom[qualify.GRAPH] = 0
+        self.assertTrue(qualify.page_as_stock(custom, stock))
+        self.assertFalse(qualify.page_as_stock(stock, stock))
+        self.assertFalse(qualify.page_as_stock(custom, custom))  # no curve on the stock page
+        moved = custom.copy()
+        moved[60, 41] = 1
+        self.assertFalse(qualify.page_as_stock(moved, stock))
 
     def test_highlighted_row(self):
         screen = np.zeros((64, 128), dtype=np.uint8)
@@ -63,6 +72,26 @@ class MeasurementTests(unittest.TestCase):
         screen[34, 10:20] = 0
         self.assertEqual(qualify.highlighted_row(screen).shape, (8, 120))
         self.assertEqual(qualify.highlighted_row(screen)[2, 10], 0)
+
+    def test_project_rows(self):
+        empty = np.ones((8, 120), dtype=np.uint8)  # highlighted: lit, with the text dark
+        empty[1:6, 6:17] = 0  # the slot number
+        for y in (2, 3, 4):
+            empty[y, 38 - y + 4 * np.arange(13)] = 0
+        self.assertTrue(qualify.empty_slot(empty))
+        named = empty.copy()
+        named[1:6, 30:120] = 1
+        named[3, 36:80:3] = 0
+        self.assertFalse(qualify.empty_slot(named))
+        active = named.copy()
+        active[2:5, 33] = 0  # the active project's marker
+        self.assertTrue(qualify.same_project(active, named))
+        other = named.copy()
+        other[3, 10] = 1 - other[3, 10]  # another slot number
+        self.assertFalse(qualify.same_project(other, named))
+        self.assertTrue(qualify.same_slot(empty, named))
+        self.assertFalse(qualify.same_slot(other, named))
+        self.assertFalse(qualify.same_project(empty, named))
 
     def test_label_is_four_characters(self):
         self.assertRegex(qualify.label(), r'^Q[0-9A-Z]{3}$')

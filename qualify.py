@@ -31,13 +31,20 @@ SYNTH_TYPE, FILTER_TYPE = 0xde, 0xdf
 # The MACHINE SEL lists, by type ID, in screen order. Neither list wraps.
 LISTS = {'SYN': [0, 2, 1, 3, 6, 4], 'FLTR': [0, 1, 4, 3, 5, 2, 8]}
 FM_TONE, SINE = 0, 6
-MULTI_MODE, LOWPASS = 0, 8
+MULTI_MODE, LOWPASS_4, LOWPASS = 0, 1, 8
 NAMES = {('SYN', 0): 'FM TONE', ('SYN', 6): 'SINE', ('FLTR', 0): 'MULTI-MODE', ('FLTR', 8): 'LOWPASS'}
 # Channel 1 CCs that open the stock filters, with the sound-record word each one sets:
 # FREQ, RESO, TYPE (LP), ENV depth (neutral), key tracking, FLTR2 BASE and WIDTH.
 OPEN = {16: (0x9a, 127), 17: (0x9c, 0), 18: (0x98, 0), 24: (0x9e, 64),
         26: (0xb2, 0), 27: (0xac, 0), 28: (0xae, 127)}
 LOW, HIGH = 36, 84
+# LOWPASS 4's controls, which the custom filter's page shows: the sound-record word,
+# channel 1 CC, NRPN 1:n and encoder 1..8 (A..H). Pre-delay is FUNC+A.
+CONTROLS = {'ATK': (0xa2, 20, 16, 1), 'DEC': (0xa4, 21, 17, 2), 'SUS': (0xa6, 22, 18, 3),
+            'REL': (0xa8, 23, 19, 4), 'FREQ': (0x9a, 16, 20, 5), 'RESO': (0x9c, 17, 21, 6),
+            'ENV': (0x9e, 24, 26, 8), 'DELAY': (0xa0, 19, 23, None)}
+GRAPH = np.s_[40:57, 21:72]  # FLTR page 1's response graph, with its frame
+SAVE_SLOT = 128  # the last project slot, which the run saves into; the list does not wrap
 
 
 def env_path(name):
@@ -89,9 +96,31 @@ def labels_shown(screen):
     return bool(screen[32:37, 22:125].any() or screen[59:64, 22:125].any())
 
 
-def cells_empty(screen):
-    """The lower four control cells hold only their dotted outlines (eight dots a row)."""
-    return all(screen[y, 22:125].sum() <= 8 for y in range(41, 56))
+def page_as_stock(custom, stock):
+    """The custom filter's page is the stock page, with the response graph left empty."""
+    outside = np.ones(custom.shape, dtype=bool)
+    outside[GRAPH] = False
+    return bool(stock[GRAPH].any() and not custom[GRAPH].any()
+                and (custom[outside] == stock[outside]).all())
+
+
+def empty_slot(row):
+    """Whether a highlighted project row shows an empty slot: thirteen slashes for a name."""
+    slashes = np.zeros((7, 90), dtype=np.uint8)
+    for y in (2, 3, 4):
+        slashes[y, 8 - y + 4 * np.arange(13)] = 1
+    return bool(((1 - row[:7, 30:]) == slashes).all())
+
+
+def same_slot(a, b):
+    """Two project rows show the same slot number."""
+    a, b = np.asarray(a), np.asarray(b)
+    return a.shape == b.shape and bool((a[:, :30] == b[:, :30]).all())
+
+
+def same_project(a, b):
+    """Two project rows show the same slot and name, whichever is active (its marker is at x 33-34)."""
+    return same_slot(a, b) and bool((np.asarray(a)[:, 36:] == np.asarray(b)[:, 36:]).all())
 
 
 def highlighted_row(screen):
@@ -156,6 +185,28 @@ class Target:
     def peek(self, addr, length):
         return digiusb.peek(self.diag, addr, length)
 
+    def word(self, offset):
+        return int.from_bytes(self.peek(SOUND + offset, 2), 'big')
+
+    def nrpn(self, msb, lsb, value):
+        for cc, v in ((99, msb), (98, lsb), (6, value >> 7), (38, value & 127)):
+            self.midi(bytes([0xb0, cc, v]))
+
+    def turn(self, encoder, detents, offset, func=False):
+        """Turn an encoder, with FUNC held for its second function; True when the word moved that way."""
+        for _ in range(3):  # a turn can be lost, like a key
+            before = self.word(offset)
+            if func:
+                self.keys.press('FUNC', 2000)
+            self.keys.turn(encoder, detents)
+            if func:
+                self.keys.release('FUNC')
+            self.wait(300)
+            after = self.word(offset)
+            if after != before:
+                return (after > before) == (detents > 0)
+        return False
+
     def machines(self):
         synth, filter_ = self.peek(SOUND + SYNTH_TYPE, 2)
         return synth, filter_
@@ -179,6 +230,53 @@ class Target:
                 self.tap(*['DOWN'] * order.index(want), 'YES')
         self.tap('NO', 'NO')
         return self.machines() == (synth, filter_)
+
+    def project_list(self, item):
+        """Open PROJECT's LOAD PROJECT (0) or SAVE PROJECT AS (1) list."""
+        self.tap('NO', 'NO', 'NO', 'SETTINGS', *['UP'] * 8, 'YES', *['UP'] * 4, *['DOWN'] * item, 'YES')
+        self.wait(800)
+
+    def project_row(self):
+        """The active project's row in LOAD PROJECT, which opens on it; the list is left open."""
+        self.project_list(0)
+        return highlighted_row(self.screen())
+
+    def load_project(self, row=None):
+        """Load the active project, or the one ROW shows, discarding unsaved changes; its row, or None."""
+        here = self.project_row()
+        if row is not None:
+            for key in ['UP'] * SAVE_SLOT + ['DOWN'] * SAVE_SLOT:  # up to the first slot, then down
+                if here is not None and same_project(here, row):
+                    break
+                self.tap(key)
+                here = highlighted_row(self.screen())
+            else:
+                self.tap('NO', 'NO', 'NO')
+                return None
+        self.tap('YES')
+        self.wait(800)
+        self.tap('YES')  # Any changes will be lost. Proceed with loading?
+        self.wait(8000)
+        self.tap('NO', 'NO', 'NO')
+        return here
+
+    def save_project(self):
+        """SAVE PROJECT AS into the save slot under the offered name; the slot's row before, or None."""
+        self.project_list(1)
+        self.tap(*['DOWN'] * (SAVE_SLOT + 12))
+        row = highlighted_row(self.screen())
+        self.tap('DOWN', 'DOWN')  # at the last slot these change nothing
+        if row is None or not np.array_equal(row, highlighted_row(self.screen())) or not self.may_overwrite(row):
+            self.tap('NO', 'NO', 'NO')
+            return None
+        for _ in range(3 if not empty_slot(row) else 2):  # overwrite 'NAME'? Y/N, the name editor, YES:SAVE
+            self.tap('YES')
+            self.wait(800)
+        self.wait(5000)
+        self.tap('NO', 'NO', 'NO')
+        active = self.project_row()  # a saved project becomes the active one
+        self.tap('NO', 'NO', 'NO')
+        return row if active is not None and same_slot(active, row) else None
 
     def open_filters(self):
         """Set the stock filters wide open on track 1; True when the sound record agrees."""
@@ -234,6 +332,9 @@ class Emulator(Target):
         self.emu.midi_in(data)
         self.wait(200)  # back-to-back DIN input is dropped
 
+    def may_overwrite(self, row):
+        return True  # the emulated drive holds only what runs saved
+
     def healthy(self):
         status = self.emu.status()
         return (not status['cf'].get('error') and status['cf']['phase'] == 'ready'
@@ -280,21 +381,10 @@ class Device(Target):
     def healthy(self):
         return digiusb.decode_hello(self.diag.call(digiusb.req_hello))['name'].startswith('digihealth')
 
-    def project_row(self):
-        """The active project's row in LOAD PROJECT, which opens on it; the list is left open."""
-        self.tap('NO', 'NO', 'NO', 'SETTINGS', *['UP'] * 8, 'YES', *['UP'] * 4, 'YES')
-        self.wait(800)
-        return highlighted_row(self.screen())
-
-    def reload_project(self):
-        """Load the active project again, discarding the run's unsaved changes."""
-        row = self.project_row()
-        self.tap('YES')
-        self.wait(800)
-        self.tap('YES')  # Any changes will be lost. Proceed with loading?
-        self.wait(8000)
-        self.tap('NO', 'NO', 'NO')
-        return row
+    def may_overwrite(self, row):
+        """Only an empty save slot, or the project an earlier run saved there."""
+        saved = scratch().get('save_row')
+        return empty_slot(row) or saved is not None and same_project(row, saved)
 
     @contextmanager
     def recording(self, name, seconds=8):
@@ -378,10 +468,7 @@ def run_cases(t, check):
                 hz, expected = pitch_hz(x), pitch_of(synth, note)
                 check('%s: note %d pitch' % (combo, note), abs(hz / expected - 1) < 0.005,
                       hz=round(hz, 2), expected=round(expected, 2))
-            screen = t.page('FLTR')
-            custom = filter_ == LOWPASS
-            check('%s: FLTR page %s' % (combo, 'has no controls' if custom else 'shows its controls'),
-                  (not labels_shown(screen) and cells_empty(screen)) if custom else labels_shown(screen))
+            check('%s: FLTR page shows its controls' % combo, labels_shown(t.page('FLTR')))
         # The stock filter is open, so its two notes differ only by the synth; LOWPASS takes
         # the high note down by its own response. Harmonics above the fundamental can add a little.
         drop = ((levels[LOWPASS, LOW] - levels[LOWPASS, HIGH])
@@ -390,7 +477,45 @@ def run_cases(t, check):
         check('%s: LOWPASS attenuates note %d against note %d by its response' % (NAMES['SYN', synth], HIGH, LOW),
               -2 <= drop - expected <= 3, extra_attenuation_db=round(float(drop), 2),
               expected_db=round(float(expected), 2))
+    run_controls(t, check)
+    saved = run_save(t, check)
     check('runs without faults', t.healthy())
+    return saved
+
+
+def run_controls(t, check):
+    """The custom filter's page and controls are LOWPASS 4's: pixels, knobs, CC and NRPN."""
+    if not check('SINE + LOWPASS 4: selected', t.select(SINE, LOWPASS_4), machines=t.machines()):
+        return
+    stock = t.page('FLTR')
+    if not check('SINE + LOWPASS: selected again', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    check("LOWPASS: FLTR page is LOWPASS 4's without its response graph", page_as_stock(t.page('FLTR'), stock))
+    for name, (offset, cc, nrpn, encoder) in CONTROLS.items():
+        t.midi(bytes([0xb0, cc, 64]))
+        knob = 'FUNC+A' if encoder is None else 'encoder ' + 'ABCDEFGH'[encoder - 1]
+        check('LOWPASS %s: %s turns it up' % (name, knob), t.turn(encoder or 1, 10, offset, func=encoder is None),
+              word=hex(t.word(offset)))
+        t.midi(bytes([0xb0, cc, 33]))
+        check('LOWPASS %s: CC %d sets it' % (name, cc), t.word(offset) >> 8 == 33, word=hex(t.word(offset)))
+        t.nrpn(1, nrpn, 77 << 7)
+        check('LOWPASS %s: NRPN 1:%d sets it' % (name, nrpn), t.word(offset) >> 8 == 77, word=hex(t.word(offset)))
+
+
+def run_save(t, check):
+    """LOWPASS and its values survive SAVE PROJECT AS and LOAD PROJECT; the saved project's row."""
+    for i, (_, _, nrpn, _) in enumerate(CONTROLS.values()):
+        t.nrpn(1, nrpn, (20 + 9 * i) << 7)
+    saved = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
+    if not check('the project saves into slot %d' % SAVE_SLOT, t.save_project() is not None):
+        return None
+    for _, _, nrpn, _ in CONTROLS.values():
+        t.nrpn(1, nrpn, 100 << 7)  # unsaved, so loading must discard it
+    row = t.load_project()
+    loaded = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
+    check('LOWPASS and its values survive saving and loading the project',
+          loaded == saved and saved[0] == [SINE, LOWPASS], saved=saved, loaded=loaded)
+    return row
 
 
 # ----- the run ---------------------------------------------------------------
@@ -438,6 +563,10 @@ def scratch_file():
     return OUT / 'scratch-project.json'
 
 
+def scratch():
+    return json.loads(scratch_file().read_text()) if scratch_file().exists() else {}
+
+
 def device_run(firmware, version, args, out):
     index = elektroid_index()
     if not index:
@@ -451,16 +580,18 @@ def device_run(firmware, version, args, out):
         return check.results
     t = Device(out)
     try:
-        row = t.project_row()
-        t.tap('NO', 'NO', 'NO')
-        remembered = scratch_file().exists() and json.loads(scratch_file().read_text())['row']
-        if not check('the scratch project is loaded', row is not None and row.tolist() == remembered):
+        # Start from the scratch project as saved, whatever was loaded or changed on the unit.
+        remembered = scratch().get('row')
+        if not check('the scratch project is loaded', remembered is not None
+                     and t.load_project(remembered) is not None):
             return check.results
         before = t.peek(SOUND, 0x100)
         try:
-            run_cases(t, check)
+            saved = run_cases(t, check)
+            if saved is not None:
+                scratch_file().write_text(json.dumps({**scratch(), 'save_row': saved.tolist()}) + '\n')
         finally:
-            t.reload_project()
+            check('the scratch project is loaded again', t.load_project(remembered) is not None)
             check('the scratch project is restored', t.peek(SOUND, 0x100) == before)
     finally:
         t.close()
@@ -506,7 +637,7 @@ def main():
         finally:
             t.close()
         build.require(row is not None, 'LOAD PROJECT shows no highlighted project')
-        scratch_file().write_text(json.dumps({'row': row.tolist()}) + '\n')
+        scratch_file().write_text(json.dumps({**scratch(), 'row': row.tolist()}) + '\n')
         print('remembered the loaded project as the scratch project')
         return 0
     firmware = ROOT / 'out/c/firmware.syx'
