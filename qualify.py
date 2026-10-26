@@ -807,6 +807,7 @@ def run_locks(t, check):
         check('LOWPASS: %s locked on step 9 changes that step only' % name, step9 >= 1 and step1 <= 0.5,
               step9_db=round(step9, 2), step1_db=round(step1, 2))
         if name == 'RESO':  # holding the step shows its lock: the graph draws the locked RESO
+            t.lock(9, encoder, 30)  # high enough that the curve's peak rises by whole rows
             plain = graph_dots(t.page('FLTR'))
             t.tap('RECORD')
             t.keys.press('9', 2000)
