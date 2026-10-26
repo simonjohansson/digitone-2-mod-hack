@@ -112,7 +112,8 @@ mise run qualify -- --remember-scratch
 Set `DIGIHEALTH`, `DIGIKIT`, `DIGI_EMUD` and `DN2_EMU_READY` in
 `mise.local.toml` (see the example). Without a unit, the device part is
 reported as skipped and the run exits with status 2, not as passed.
-`--targets emulator`, `--no-build` and `--no-flash` run part of it.
+`--targets emulator`, `--cases save,tracks`, `--no-build` and `--no-flash` run
+part of it; after a failure, rerun only the failed cases on the same candidate.
 
 The C example plays one octave above integer MIDI notes 36..84, rounds
 fractional pitch down and writes zeros outside that range. Elekloader supplies

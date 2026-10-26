@@ -474,7 +474,19 @@ class Checks:
         return ok
 
 
-def run_cases(t, check):
+def run_cases(t, check, cases=None):
+    """The named CASES (all by default), then the health check; the saved project's row, if saved."""
+    saved = None
+    for name, case in CASES.items():
+        if cases is None or name in cases:
+            result = case(t, check)
+            if name == 'save':
+                saved = result
+    check('runs without faults', t.healthy())
+    return saved
+
+
+def run_combinations(t, check):
     """The four synth/filter combinations on track 1."""
     for synth in (SINE, FM_TONE):
         levels = {}
@@ -506,13 +518,6 @@ def run_cases(t, check):
         check('%s: LOWPASS attenuates note %d against note %d by its response' % (NAMES['SYN', synth], HIGH, LOW),
               -2 <= drop - expected <= 3, extra_attenuation_db=round(float(drop), 2),
               expected_db=round(float(expected), 2))
-    run_controls(t, check)
-    run_response(t, check)
-    run_tracks(t, check)
-    run_downstream(t, check)
-    saved = run_save(t, check)
-    check('runs without faults', t.healthy())
-    return saved
 
 
 def run_controls(t, check):
@@ -650,6 +655,10 @@ def run_save(t, check):
     return row
 
 
+CASES = {'combinations': run_combinations, 'controls': run_controls, 'response': run_response,
+         'tracks': run_tracks, 'downstream': run_downstream, 'save': run_save}
+
+
 # ----- the run ---------------------------------------------------------------
 
 def label():
@@ -719,7 +728,7 @@ def device_run(firmware, version, args, out):
             return check.results
         before = t.peek(SOUND, 0x100)
         try:
-            saved = run_cases(t, check)
+            saved = run_cases(t, check, args.cases)
             if saved is not None:
                 scratch_file().write_text(json.dumps({**scratch(), 'save_row': saved.tolist()}) + '\n')
         finally:
@@ -730,12 +739,12 @@ def device_run(firmware, version, args, out):
     return check.results
 
 
-def emulator_run(firmware, out):
+def emulator_run(firmware, out, cases=None):
     check = Checks('emulator')
     t = Emulator(firmware, out)
     try:
         check('candidate loaded', t.loaded['syx_sha256'] == build.sha(firmware), start=t.loaded['start_used'])
-        run_cases(t, check)
+        run_cases(t, check, cases)
     finally:
         t.close()
     return check.results
@@ -752,6 +761,8 @@ def sources():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--targets', default='emulator,device')
+    parser.add_argument('--cases', type=lambda names: names.split(','),
+                        help='only these cases, of: ' + ', '.join(CASES))
     parser.add_argument('--no-build', dest='build', action='store_false',
                         help='use the existing out/c/firmware.syx')
     parser.add_argument('--no-flash', dest='flash', action='store_false',
@@ -759,6 +770,8 @@ def main():
     parser.add_argument('--remember-scratch', action='store_true',
                         help='record the loaded project as the scratch project the device run may change')
     args = parser.parse_args()
+    if args.cases and not set(args.cases) <= set(CASES):
+        parser.error('unknown case: ' + ', '.join(sorted(set(args.cases) - set(CASES))))
     env_path('DIGIHEALTH')
     OUT.mkdir(parents=True, exist_ok=True)
     if args.remember_scratch:
@@ -782,7 +795,7 @@ def main():
     for name in targets:
         out = OUT / name
         out.mkdir(exist_ok=True)
-        results = emulator_run(firmware, out) if name == 'emulator' else device_run(firmware, version, args, out)
+        results = emulator_run(firmware, out, args.cases) if name == 'emulator' else device_run(firmware, version, args, out)
         report['targets'][name] = results if results is not None else 'skipped: no unit'
         (OUT / 'report.json').write_text(json.dumps(report, indent=1) + '\n')
     failed = [r['name'] for results in report['targets'].values() if isinstance(results, list)
@@ -793,8 +806,9 @@ def main():
     if failed:
         print('FAILED: %d checks' % len(failed))
         return 1
-    if skipped or set(targets) != {'emulator', 'device'}:
-        print('INCOMPLETE: %s not run' % ', '.join(skipped or sorted({'emulator', 'device'} - set(targets))))
+    if skipped or set(targets) != {'emulator', 'device'} or args.cases:
+        print('INCOMPLETE: %s not run' % ', '.join(skipped or sorted({'emulator', 'device'} - set(targets))
+                                                   or sorted(set(CASES) - set(args.cases))))
         return 2
     print('PASSED in the emulator and on the device')
     return 0
