@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The qualification's measurements on synthetic audio and screens."""
+import shutil
+import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 
+import build
 import qualify
 
 
@@ -83,18 +88,52 @@ class MeasurementTests(unittest.TestCase):
         labelled[60, 30:40] = 1
         self.assertTrue(qualify.labels_shown(labelled))
 
-    def test_page_as_stock_needs_an_empty_graph_and_everything_else_equal(self):
+    def test_page_as_stock_needs_the_curve_and_everything_else_equal(self):
         stock = np.zeros((64, 128), dtype=np.uint8)
         stock[60, 30:40] = 1
-        stock[45, 25:60] = 1  # the response curve
+        stock[45, 25:60] = 1  # the stock response curve
+        dots = qualify.curve_dots(64 << 8, 0)
         custom = stock.copy()
         custom[qualify.GRAPH] = 0
-        self.assertTrue(qualify.page_as_stock(custom, stock))
-        self.assertFalse(qualify.page_as_stock(stock, stock))
-        self.assertFalse(qualify.page_as_stock(custom, custom))  # no curve on the stock page
+        for x, y in dots:
+            custom[y, x] = 1
+        self.assertTrue(qualify.page_as_stock(custom, stock, dots))
+        self.assertFalse(qualify.page_as_stock(stock, stock, dots))
+        blank = stock.copy()
+        blank[qualify.GRAPH] = 0
+        self.assertFalse(qualify.page_as_stock(custom, blank, dots))  # no curve on the stock page
         moved = custom.copy()
         moved[60, 41] = 1
-        self.assertFalse(qualify.page_as_stock(moved, stock))
+        self.assertFalse(qualify.page_as_stock(moved, stock, dots))
+
+    @unittest.skipUnless(shutil.which('cc'), 'native C compiler unavailable')
+    def test_curve_dots_follow_the_examples_curve(self):
+        source = build.ROOT / 'examples/sharc-filter/machine.c'
+        with tempfile.TemporaryDirectory() as work:
+            p = Path(work)
+            (p / 'check.c').write_text('#include <stdio.h>\n#include "' + str(source) + '"\n' + r'''
+int main(void)
+{
+    uint8_t y[51];
+    for (unsigned freq = 0; freq < 128; freq += 9)
+        for (unsigned reso = 0; reso < 128; reso += 11) {
+            lowpass.curve(freq << 8, reso << 8, y);
+            for (unsigned x = 0; x < 51; ++x)
+                printf("%u ", y[x]);
+            printf("\n");
+        }
+    return 0;
+}
+''')
+            subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror', '-I',
+                            str(build.VENDOR / 'elekloader/sdk/include'), str(p / 'check.c'), '-o', str(p / 'check')],
+                           check=True)
+            rows = subprocess.run([str(p / 'check')], check=True, capture_output=True, text=True).stdout.split('\n')
+        cases = [(f, r) for f in range(0, 128, 9) for r in range(0, 128, 11)]
+        for (freq, reso), row in zip(cases, rows):
+            y = [int(v) for v in row.split()]
+            drawn = {(21 + x, 56 - min(v, 16)) for x, v in enumerate(y) if v != 0xff}
+            self.assertEqual(drawn, qualify.curve_dots(freq << 8, reso << 8), (freq, reso))
 
     def test_highlighted_row(self):
         screen = np.zeros((64, 128), dtype=np.uint8)

@@ -11,7 +11,8 @@ Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
 and filter have separate memory and run through the stock track pipeline.
 SINE's SYN page has no controls. LOWPASS shows LOWPASS 4's FLTR page, and
 its FREQ, RESO and the stock filter envelope (ENV, ATK/DEC/SUS/REL,
-pre-delay) move it. AMP, pan and mixer remain native.
+pre-delay) move it. Its graph draws LOWPASS's own response, from the
+`curve` callback in `examples/sharc-filter/machine.c`. AMP, pan and mixer remain native.
 This is experimental and timing is unqualified.
 
 Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.s` for
@@ -85,8 +86,9 @@ from RAM, opens the stock filter over MIDI, records notes 36 and 84,
 and checks the FLTR page. Every note must sound at its pitch, and
 LOWPASS at FREQ 72 must take note 84 down against note 36 by its response
 at the synth's pitch, within -2/+3 dB, compared with the open stock
-filter. LOWPASS's page must match LOWPASS 4's pixel for pixel, except for
-an empty response graph. Note 60 must follow LOWPASS's response at four
+filter. LOWPASS's page must match LOWPASS 4's pixel for pixel outside the
+response graph, and the graph must show exactly the dots its curve gives,
+following FREQ and RESO edits and, while a locked step is held, the lock. Note 60 must follow LOWPASS's response at four
 FREQ and two RESO settings within 1.5 dB. Over a held note, ENV 0 must
 leave it steady, positive ENV must open then close it, negative ENV the
 reverse, ATK must delay its peak and pre-delay its start. Tracks 1 and 2

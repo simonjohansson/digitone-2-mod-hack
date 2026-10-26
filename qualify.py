@@ -139,11 +139,31 @@ def labels_shown(screen):
     return bool(screen[32:37, 22:125].any() or screen[59:64, 22:125].any())
 
 
-def page_as_stock(custom, stock):
-    """The custom filter's page is the stock page, with the response graph left empty."""
+PEAK_DB = (0, 1, 2, 4, 6, 8, 12, 17)  # as examples/sharc-filter/machine.c
+
+
+def curve_dots(freq, reso):
+    """The screen dots the example LOWPASS draws in the FLTR graph for the shown FREQ and RESO words."""
+    cutoff, peak, dots = freq >> 8, PEAK_DB[(reso >> 8) >> 4], set()
+    for x in range(51):
+        d = x * 127 // 50 - cutoff
+        db = (peak * (12 + d) // 12 if d > -12 else 0) if d <= 0 else -d + (peak * (12 - d) // 12 if d < 12 else 0)
+        if db >= -36:
+            dots.add((21 + x, 56 - min((db + 36) // 3, 16)))
+    return dots
+
+
+def graph_dots(screen):
+    """The lit pixels in the FLTR graph, as screen (x, y)."""
+    ys, xs = np.nonzero(screen[GRAPH])
+    return {(int(x) + GRAPH[1].start, int(y) + GRAPH[0].start) for y, x in zip(ys, xs)}
+
+
+def page_as_stock(custom, stock, dots):
+    """The custom filter's page is the stock page, with its own curve's DOTS in the response graph."""
     outside = np.ones(custom.shape, dtype=bool)
     outside[GRAPH] = False
-    return bool(stock[GRAPH].any() and not custom[GRAPH].any()
+    return bool(stock[GRAPH].any() and graph_dots(custom) == dots
                 and (custom[outside] == stock[outside]).all())
 
 
@@ -564,10 +584,12 @@ def run_controls(t, check):
     """The custom filter's page and controls are LOWPASS 4's: pixels, knobs, CC and NRPN."""
     if not check('SINE + LOWPASS 4: selected', t.select(SINE, LOWPASS_4), machines=t.machines()):
         return
+    for cc, value in ((16, 64), (17, 0)):  # FREQ, RESO
+        t.midi(bytes([0xb0, cc, value]))
     stock = t.page('FLTR')
     if not check('SINE + LOWPASS: selected again', t.select(SINE, LOWPASS), machines=t.machines()):
         return
-    check("LOWPASS: FLTR page is LOWPASS 4's without its response graph", page_as_stock(t.page('FLTR'), stock))
+    check("LOWPASS: FLTR page is LOWPASS 4's with its own curve", page_as_stock(t.page('FLTR'), stock, curve_dots(64 << 8, 0)))
     for name, (offset, cc, nrpn, encoder) in CONTROLS.items():
         t.midi(bytes([0xb0, cc, 64]))
         knob = 'FUNC+A' if encoder is None else 'encoder ' + 'ABCDEFGH'[encoder - 1]
@@ -697,6 +719,20 @@ def run_downstream(t, check):
               stock <= -3 and abs(custom - stock) <= 0.5, stock_db=round(float(stock), 2), lowpass_db=round(float(custom), 2))
 
 
+def run_curve(t, check):
+    """LOWPASS's graph follows FREQ and RESO edits: exactly the dots its curve gives."""
+    if not check('SINE + LOWPASS: selected for its curve', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    t.page('FLTR')
+    for freq, reso in ((40, 0), (100, 0), (72, 120)):
+        t.midi(bytes([0xb0, 16, freq]))
+        t.midi(bytes([0xb0, 17, reso]))
+        t.wait(300)
+        got, want = graph_dots(t.screen()), curve_dots(freq << 8, reso << 8)
+        check('LOWPASS FREQ %d RESO %d: the graph draws its curve' % (freq, reso), got == want,
+              missing=len(want - got), extra=len(got - want))
+
+
 def run_routes(t, check):
     """Key tracking and LFO 1 reach the custom filter through the stock cutoff."""
     if not check('SINE + LOWPASS: selected for its routes', t.select(SINE, LOWPASS), machines=t.machines()):
@@ -770,6 +806,17 @@ def run_locks(t, check):
         step1, step9 = change(before[0], after[0]), change(before[1], after[1])
         check('LOWPASS: %s locked on step 9 changes that step only' % name, step9 >= 1 and step1 <= 0.5,
               step9_db=round(step9, 2), step1_db=round(step1, 2))
+        if name == 'RESO':  # holding the step shows its lock: the graph draws the locked RESO
+            plain = graph_dots(t.page('FLTR'))
+            t.tap('RECORD')
+            t.keys.press('9', 2000)
+            t.wait(300)
+            held = graph_dots(t.screen())
+            t.keys.release('9')
+            t.wait(200)
+            t.tap('RECORD')
+            check("LOWPASS: holding step 9 draws its locked RESO's curve", held != plain and len(held) > 20,
+                  plain=len(plain), held=len(held))
 
 
 def run_switch(t, check):
@@ -815,7 +862,8 @@ def run_save(t, check):
 
 
 CASES = {'combinations': run_combinations, 'controls': run_controls, 'response': run_response,
-         'tracks': run_tracks, 'downstream': run_downstream, 'routes': run_routes, 'locks': run_locks,
+         'tracks': run_tracks, 'downstream': run_downstream, 'curve': run_curve, 'routes': run_routes,
+         'locks': run_locks,
          'switch': run_switch, 'save': run_save}
 
 
