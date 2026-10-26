@@ -3,3 +3,8 @@ DN2_STOCK = "/absolute/path/to/Digitone_II_OS1.12.syx"
 SELACHE = "/absolute/path/to/selache"
 DN2_DIGIHEALTH = "/absolute/path/to/digihealth.elemod"
 ELEKLOADER_CROSS = "m68k-elf-"
+# mise run qualify
+DIGIHEALTH = "/absolute/path/to/digihealth"  # the DN2 fork's checkout; its tools/ drive keys, screens and RAM reads
+DIGIKIT = "/absolute/path/to/digikit"
+DIGI_EMUD = "/absolute/path/to/digi-emud"
+DN2_EMU_READY = "/absolute/path/to/ready"  # digi-audio-dn2-image.bin, digi-audio-m5.snap, digi-audio-m5.snap.dsp

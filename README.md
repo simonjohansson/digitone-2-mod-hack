@@ -53,7 +53,8 @@ mise run build-c
 ```
 
 `SELACHE` points to the clean compiler checkout with its four tools built.
-Python 3.12.13 is managed by mise; no Python packages are required.
+Python 3.12.13 and uv are managed by mise. The build needs no Python
+packages; `mise run test` and `mise run qualify` fetch pinned ones with uv.
 
 ## Build and test
 
@@ -63,10 +64,37 @@ DigiHealth. A failed build removes stale firmware. Configuration, firmware
 and build reports are ignored.
 
 `mise run test` checks malformed compiler output, artifact bounds and
-independent per-voice phase/retrigger state and the filter's sample bounds.
-Native selection, controls, preset copy, saved projects and missing
-registrations require runtime checks. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
+independent per-voice phase/retrigger state, the filter's sample bounds and
+the qualification's measurements. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
 and [filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md).
+
+## Qualify
+
+`mise run qualify` builds one candidate, labelled with the four
+characters the unit shows, and runs the same cases in DigiKit's coupled
+emulator and on the unit: SINE and FM TONE, each through MULTI-MODE and
+LOWPASS on track 1. Each case selects the machines and reads them back
+from RAM, opens the stock filter over MIDI, records notes 36 and 84,
+and checks the FLTR page. Every note must sound at its pitch, and
+LOWPASS must take note 84 down against note 36 by its one-pole response
+at the synth's pitch, within -2/+3 dB, compared with the open stock
+filter. Nothing is checked by hand. The report, the
+recordings and the firmware's SHA-256 go to `out/qualify/`.
+
+The unit part flashes the candidate with `elektroid-cli` and confirms it
+with DigiHealth's remote YES, so the installed firmware must include
+DigiHealth. It runs only in the project recorded as the scratch project,
+and reloads that project afterwards, discarding the run's changes. Load
+a project you can lose, then record it once:
+
+```sh
+mise run qualify -- --remember-scratch
+```
+
+Set `DIGIHEALTH`, `DIGIKIT`, `DIGI_EMUD` and `DN2_EMU_READY` in
+`mise.local.toml` (see the example). Without a unit, the device part is
+reported as skipped and the run exits with status 2, not as passed.
+`--targets emulator`, `--no-build` and `--no-flash` run part of it.
 
 The C example plays one octave above integer MIDI notes 36..84, rounds
 fractional pitch down and writes zeros outside that range. Elekloader supplies
@@ -77,7 +105,7 @@ eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader
 
-The submodule tracks the public Elekloader fork's `machines` branch.
+The submodule tracks the public Elekloader fork's `filter-page` branch.
 For local Elekloader development, keep the checkout's remote on your
 filesystem with this uncommitted setting:
 
@@ -97,4 +125,4 @@ mise run build-c
 ```
 
 Commit the submodule pointer after checking the build. All feature work is
-committed directly to `machines` in each repository.
+committed directly to `filter-page` in each repository.
