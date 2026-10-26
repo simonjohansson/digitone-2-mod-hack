@@ -281,7 +281,7 @@ class Target:
 
     def turn(self, encoder, detents, offset, func=False):
         """Turn an encoder, with FUNC held for its second function; True when the word moved that way."""
-        for _ in range(3):  # a turn can be lost, like a key
+        for _ in range(6):  # in the emulator every other remote turn is dropped; on the unit some are
             before = self.word(offset)
             if func:
                 self.keys.press('FUNC', 2000)
