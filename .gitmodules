@@ -1,4 +1,4 @@
 [submodule "vendor/elekloader"]
 	path = vendor/elekloader
 	url = https://github.com/simonjohansson/elekloader.git
-	branch = machines
+	branch = filter-page
