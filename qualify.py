@@ -641,6 +641,8 @@ def run_downstream(t, check):
 
 def run_save(t, check):
     """LOWPASS and its values survive SAVE PROJECT AS and LOAD PROJECT; the saved project's row."""
+    if not check('SINE + LOWPASS: selected for saving', t.select(SINE, LOWPASS), machines=t.machines()):
+        return None
     for i, (_, _, nrpn, _) in enumerate(CONTROLS.values()):
         t.nrpn(1, nrpn, (20 + 9 * i) << 7)
     saved = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
