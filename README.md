@@ -90,8 +90,15 @@ an empty response graph. Note 60 must follow LOWPASS's response at four
 FREQ and two RESO settings within 1.5 dB. Over a held note, ENV 0 must
 leave it steady, positive ENV must open then close it, negative ENV the
 reverse, ATK must delay its peak and pre-delay its start. Tracks 1 and 2
-played together must each follow their own FREQ, and FLTR2 BASE and AMP
-VOL must change LOWPASS as they change MULTI-MODE. Each of its controls must move with its knob
+played together must each follow their own FREQ, an LFO on track 1 must
+leave track 2's note alone, and FLTR2 BASE and AMP VOL must change LOWPASS
+as they change MULTI-MODE. Key tracking must move it by its response, and
+LFO 1 on FREQ, RESO, ENV, pre-delay and ATK/DEC/SUS/REL must each change
+the note. Parameter locks on step 9 must change that step and not step 1;
+for now this runs in the emulator only, because DigiHealth's remote turns
+do not edit a held trig's lock on the unit. Back on LOWPASS after
+MULTI-MODE, the first note must match a repeat of it, and a note must
+sound the same after the project is saved and loaded. Each of its controls must move with its knob
 (pre-delay with FUNC+A), its CC and its NRPN, read back from RAM. The
 filter and its values must survive SAVE PROJECT AS into slot 128 and
 LOAD PROJECT. Nothing is checked by hand. The report, the recordings and

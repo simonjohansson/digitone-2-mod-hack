@@ -47,6 +47,15 @@ CONTROLS = {'ATK': (0xa2, 20, 16, 1), 'DEC': (0xa4, 21, 17, 2), 'SUS': (0xa6, 22
             'REL': (0xa8, 23, 19, 4), 'FREQ': (0x9a, 16, 20, 5), 'RESO': (0x9c, 17, 21, 6),
             'ENV': (0x9e, 24, 26, 8), 'DELAY': (0xa0, 19, 23, None)}
 GRAPH = np.s_[40:57, 21:72]  # FLTR page 1's response graph, with its frame
+# Other channel-1 CCs the cases set: key tracking, and LFO 1 (its destination is a parameter slot:
+# FREQ 67, RESO 68, ENV 69, pre-delay 70, ATK..REL 71..74). Key tracking at 127 adds 0.0826 to the
+# cutoff (10.57 FREQ) per octave above note 48. WAVE 0 is a triangle and 2 a square; MODE 0 runs
+# free and 1 restarts on each note; SPD 64 holds the LFO still and DEP 64 is no depth.
+CCS = {**{name: cc for name, (_, cc, _, _) in CONTROLS.items()}, 'KT': 26,
+       'SPD': 102, 'MULT': 103, 'DEST': 105, 'WAVE': 106, 'MODE': 108, 'DEP': 109}
+KT_PER_OCTAVE = 0.0826 * 128
+REST = {'FREQ': 127, 'RESO': 0, 'ENV': 64, 'ATK': 0, 'DEC': 64, 'SUS': 0, 'REL': 64, 'DELAY': 0,
+        'KT': 0, 'DEST': 0, 'DEP': 64}
 SAVE_SLOT = 128  # the last project slot, which the run saves into; the list does not wrap
 
 
@@ -106,6 +115,13 @@ def tone_db(x, hz):
     n = 2 * np.pi * hz * np.arange(len(x)) / RATE
     fit = np.linalg.lstsq(np.stack([np.sin(n), np.cos(n)], 1), x, rcond=None)[0]
     return 20 * np.log10(np.hypot(*fit) / np.sqrt(2))
+
+
+def onsets(x, gap_ms=50):
+    """Where sound starts after at least GAP_MS of silence, in samples."""
+    loud = np.nonzero(np.abs(x) > 1e-4)[0]
+    gap = RATE * gap_ms // 1000
+    return [int(b) for a, b in zip(np.r_[-gap - 1, loud[:-1]], loud) if b - a > gap]
 
 
 def window_db(x, ms=20):
@@ -211,6 +227,30 @@ class Target:
 
     def peek(self, addr, length):
         return digiusb.peek(self.diag, addr, length)
+
+    def lock(self, step, encoder, detents, holds=3):
+        """Hold a trig in grid recording and turn an encoder. In each hold the first turn opens the
+        lock at its value and the second moves it by DETENTS; short holds stay inside DigiHealth's
+        hold limit. The audio shows whether it took."""
+        self.tap('RECORD')
+        for _ in range(holds):
+            self.keys.press(str(step), 2000)
+            self.wait(100)
+            for _ in range(2):
+                self.keys.turn(encoder, detents)
+                self.wait(150)
+            self.keys.release(str(step))
+            self.wait(200)
+        self.tap('RECORD')
+
+    def pattern(self, name, bars=2):
+        """Record the pattern playing from its start, at 120 BPM."""
+        with self.recording(name, seconds=2 * bars + 3) as recorded:
+            self.tap('PLAY')
+            self.wait(2000 * bars + 300)
+            self.tap('STOP', 'STOP')
+            self.wait(600)
+        return recorded.samples
 
     def word(self, offset):
         return int.from_bytes(self.peek(SOUND + offset, 2), 'big')
@@ -368,7 +408,7 @@ class Emulator(Target):
                 and status['audio']['halted'] is None and status['audio']['missing_blocks'] == 0)
 
     @contextmanager
-    def recording(self, name):
+    def recording(self, name, seconds=None):  # the capture runs until stopped
         path = self.out / (name + '.wav')
         self.emu.call('pcm.tap', action='capture', path=str(path))
         take = Take(path)
@@ -539,6 +579,15 @@ def run_controls(t, check):
         check('LOWPASS %s: NRPN 1:%d sets it' % (name, nrpn), t.word(offset) >> 8 == 77, word=hex(t.word(offset)))
 
 
+def play(t, name, note=60, **values):
+    """Record one held note on track 1 with the filter controls at REST except VALUES."""
+    for control, value in {**REST, **values}.items():
+        t.midi(bytes([0xb0, CCS[control], value]))
+    with t.recording(name) as recorded:
+        t.note(note)
+    return recorded.samples
+
+
 def run_response(t, check):
     """The kernel follows FREQ, RESO and the stock filter envelope (ENV, ATK, pre-delay)."""
     if not check('SINE + LOWPASS: selected for its response', t.select(SINE, LOWPASS), machines=t.machines()):
@@ -547,12 +596,7 @@ def run_response(t, check):
     hz = pitch_of(SINE, 60)
 
     def take(name, **values):
-        settings = {'FREQ': 127, 'RESO': 0, 'ENV': 64, 'ATK': 0, 'DEC': 64, 'SUS': 0, 'DELAY': 0, **values}
-        for control, value in settings.items():
-            t.midi(bytes([0xb0, CONTROLS[control][1], value]))
-        with t.recording('LOWPASS-' + name) as recorded:
-            t.note(60)
-        return recorded.samples
+        return play(t, 'LOWPASS-' + name, **values)
 
     open_db = level_db(take('open'))
     for freq, reso in ((50, 0), (64, 0), (72, 0), (90, 0), (72, 100), (72, 120)):
@@ -612,6 +656,20 @@ def run_tracks(t, check):
         expected = svf_db(hz, freq) - svf_db(hz, 127)
         check('track %d: its note follows its own FREQ %d' % (track, freq), abs(got - expected) <= 1.5,
               level_db=round(float(got), 2), expected_db=round(float(expected), 2))
+    # An LFO on track 1's FREQ moves its note and leaves track 2's alone.
+    for control, value in {'DEST': 67, 'WAVE': 0, 'MODE': 0, 'SPD': 127, 'MULT': 4, 'DEP': 127}.items():
+        t.midi(bytes([0xb0, CCS[control], value]))
+    with t.recording('TRACKS-lfo') as recorded:
+        for track, note in notes.items():
+            t.midi(bytes([0x90 | (track - 1), note, 100]))
+        t.wait(800)
+        for track, note in notes.items():
+            t.midi(bytes([0x80 | (track - 1), note, 0]))
+        t.wait(400)
+    t.midi(bytes([0xb0, CCS['DEP'], 64]))
+    moved = {track: tone_db(recorded.samples, pitch_of(SINE, note)) - levels['set'][track] for track, note in notes.items()}
+    check("an LFO on track 1 moves its note and leaves track 2's", abs(moved[1]) >= 3 and abs(moved[2]) <= 0.5,
+          track1_db=round(float(moved[1]), 2), track2_db=round(float(moved[2]), 2))
 
 
 def run_downstream(t, check):
@@ -639,6 +697,99 @@ def run_downstream(t, check):
               stock <= -3 and abs(custom - stock) <= 0.5, stock_db=round(float(stock), 2), lowpass_db=round(float(custom), 2))
 
 
+def run_routes(t, check):
+    """Key tracking and LFO 1 reach the custom filter through the stock cutoff."""
+    if not check('SINE + LOWPASS: selected for its routes', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    t.open_filters()
+    for note in (60, 72):
+        hz = pitch_of(SINE, note)
+        got = level_db(play(t, 'KT127-%d' % note, note, FREQ=64, KT=127)) - level_db(play(t, 'KT0-%d' % note, note, FREQ=64))
+        expected = svf_db(hz, 64 + KT_PER_OCTAVE * (note - 48) / 12) - svf_db(hz, 64)
+        check('LOWPASS key tracking: note %d follows its response' % note, abs(got - expected) <= 1.5,
+              level_db=round(float(got), 2), expected_db=round(float(expected), 2))
+    body = slice(3, 38)
+    still = window_db(play(t, 'LFO-none', FREQ=64))[body]
+    moving = window_db(play(t, 'LFO-FREQ', FREQ=64, DEST=67, WAVE=0, MODE=0, SPD=127, MULT=4, DEP=127))[body]
+    swing = np.ptp(moving - still) if len(moving) == len(still) else 0
+    check('LOWPASS: a free LFO on FREQ swings the note', swing >= 10, swing_db=round(float(swing), 2))
+    # A still square restarted on each note offsets its destination for the whole note. The attack
+    # is instant except for ATK's own case, so that the note reaches decay and sustain.
+    for name, slot in (('RESO', 68), ('ENV', 69), ('DELAY', 70), ('ATK', 71), ('DEC', 72), ('SUS', 73), ('REL', 74)):
+        base = {'FREQ': 50, 'RESO': 64, 'ENV': 100, 'ATK': 30 if name == 'ATK' else 0, 'DEC': 50, 'SUS': 60,
+                'REL': 50, 'DELAY': 20}
+        plain = window_db(play(t, 'LFO-%s-none' % name, **base))
+        w = window_db(play(t, 'LFO-' + name, **base, DEST=slot, WAVE=2, MODE=1, SPD=64, DEP=127))
+        n = min(len(w), len(plain))
+        change = float(np.max(np.abs(w[:n] - plain[:n]))) if n else 0
+        check('LOWPASS: an LFO on %s changes the note' % ('pre-delay' if name == 'DELAY' else name), change >= 3,
+              change_db=round(change, 2))
+
+
+def run_locks(t, check):
+    """Parameter locks on step 9 change that step's note and leave step 1's alone."""
+    if t.name == 'device':
+        # On the unit, DigiHealth's remote turns leave a held trig's lock unchanged; the emulator only, for now.
+        print('device   SKIP parameter locks: checked in the emulator only', flush=True)
+        return
+    if not check('SINE + LOWPASS: selected for locks', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    t.open_filters()
+    t.page('FLTR')
+    if not check("the scratch pattern has no trigs", not onsets(t.pattern('LOCKS-empty'))):
+        return
+    t.tap('RECORD', '1', '9', 'RECORD')
+    x = t.pattern('LOCKS-trigs')
+    starts = [round((s - onsets(x)[0]) / RATE, 3) for s in onsets(x)]
+    # Two bars, and the next bar's step 1 may start before STOP.
+    if not check('steps 1 and 9 play', len(starts) in (4, 5) and all(abs(a - b) < 0.02 for a, b in zip(starts, range(5))),
+                 onsets_s=starts):
+        return
+
+    def steps(x):  # 20 ms windows over 600 ms from each of the two notes' starts
+        n = RATE // 50
+        return [20 * np.log10(np.sqrt(np.mean(x[s:s + 30 * n].reshape(30, n) ** 2, axis=1)) + 1e-9)
+                for s in onsets(x)[:2] if s + 30 * n <= len(x)]
+
+    def change(a, b):
+        n = min(len(a), len(b))
+        return float(np.max(np.abs(a[:n] - b[:n]))) if n else np.inf
+
+    # Each control gets a setting where its lock is clearly audible, and its own before and after.
+    # Locks are absolute, so earlier locks on step 9 stay; ATK goes last, as a slow attack would
+    # keep the short note from reaching decay and sustain.
+    sweep = {'FREQ': 40, 'RESO': 0, 'ENV': 127, 'ATK': 0, 'DEC': 5, 'SUS': 0, 'REL': 0}
+    for name, encoder, setting in (('RESO', 6, {'FREQ': 72, 'RESO': 0, 'ENV': 64}),
+                                   ('ENV', 8, {**sweep, 'ENV': 70}), ('DEC', 2, sweep), ('SUS', 3, sweep),
+                                   ('REL', 4, {**sweep, 'DEC': 127, 'SUS': 127}), ('ATK', 1, sweep)):
+        for control, value in {**REST, **setting}.items():
+            t.midi(bytes([0xb0, CCS[control], value]))
+        before = steps(t.pattern('LOCKS-%s-before' % name, bars=1))
+        t.lock(9, encoder, 30)
+        after = steps(t.pattern('LOCKS-' + name, bars=1))
+        step1, step9 = change(before[0], after[0]), change(before[1], after[1])
+        check('LOWPASS: %s locked on step 9 changes that step only' % name, step9 >= 1 and step1 <= 0.5,
+              step9_db=round(step9, 2), step1_db=round(step1, 2))
+
+
+def run_switch(t, check):
+    """Back on LOWPASS after MULTI-MODE, the first note starts clean: it matches a repeat of it."""
+    settings = {'FREQ': 60, 'RESO': 110}
+    if not check('SINE + LOWPASS: selected before switching', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    t.open_filters()
+    play(t, 'SWITCH-custom', **settings)
+    if not check('SINE + MULTI-MODE: selected in between', t.select(SINE, MULTI_MODE), machines=t.machines()):
+        return
+    play(t, 'SWITCH-stock', **settings)
+    if not check('SINE + LOWPASS: selected again after MULTI-MODE', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    first, again = (window_db(play(t, 'SWITCH-' + name, **settings)) for name in ('back', 'again'))
+    n = min(len(first), len(again), 38)  # the held note; its release follows the note-off's timing
+    change = float(np.max(np.abs(first[:n] - again[:n]))) if n else np.inf
+    check('LOWPASS after MULTI-MODE: the first note matches a repeat', change <= 1, change_db=round(change, 2))
+
+
 def run_save(t, check):
     """LOWPASS and its values survive SAVE PROJECT AS and LOAD PROJECT; the saved project's row."""
     if not check('SINE + LOWPASS: selected for saving', t.select(SINE, LOWPASS), machines=t.machines()):
@@ -646,6 +797,8 @@ def run_save(t, check):
     for i, (_, _, nrpn, _) in enumerate(CONTROLS.values()):
         t.nrpn(1, nrpn, (20 + 9 * i) << 7)
     saved = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
+    with t.recording('SAVE-before') as before:
+        t.note(60)
     if not check('the project saves into slot %d' % SAVE_SLOT, t.save_project() is not None):
         return None
     for _, _, nrpn, _ in CONTROLS.values():
@@ -654,11 +807,16 @@ def run_save(t, check):
     loaded = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
     check('LOWPASS and its values survive saving and loading the project',
           loaded == saved and saved[0] == [SINE, LOWPASS], saved=saved, loaded=loaded)
+    with t.recording('SAVE-after') as after:
+        t.note(60)
+    change = level_db(after.samples) - level_db(before.samples)
+    check('LOWPASS sounds the same after loading the project', abs(change) <= 0.5, change_db=round(float(change), 2))
     return row
 
 
 CASES = {'combinations': run_combinations, 'controls': run_controls, 'response': run_response,
-         'tracks': run_tracks, 'downstream': run_downstream, 'save': run_save}
+         'tracks': run_tracks, 'downstream': run_downstream, 'routes': run_routes, 'locks': run_locks,
+         'switch': run_switch, 'save': run_save}
 
 
 # ----- the run ---------------------------------------------------------------

@@ -56,6 +56,16 @@ class MeasurementTests(unittest.TestCase):
         self.assertAlmostEqual(qualify.tone_db(x, 1046.5), 20 * np.log10(0.001 / np.sqrt(2)), delta=0.1)
         self.assertEqual(qualify.tone_db(np.zeros(qualify.RATE), 440), -np.inf)
 
+    def test_onsets_find_notes_after_silence(self):
+        x = np.zeros(3 * qualify.RATE)
+        for start in (1000, qualify.RATE + 1000, 2 * qualify.RATE + 1000):
+            x[start:start + qualify.RATE // 8] = 0.01 * np.sin(np.arange(qualify.RATE // 8))
+        found = qualify.onsets(x)
+        self.assertEqual(len(found), 3)
+        for got, start in zip(found, (1000, qualify.RATE + 1000, 2 * qualify.RATE + 1000)):
+            self.assertLessEqual(abs(got - start), 2)  # the sine starts at zero
+        self.assertEqual(qualify.onsets(np.zeros(qualify.RATE)), [])
+
     def test_window_levels_follow_a_changing_level(self):
         x = tone(1000, seconds=1)
         x[qualify.RATE // 5 + qualify.RATE // 2:] *= 0.1  # 20 dB down halfway through
