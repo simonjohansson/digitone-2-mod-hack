@@ -2,7 +2,7 @@
  "id": "lowpass-filter",
  "version": "0.1",
  "title": "LOWPASS",
- "description": "A fixed-cutoff one-pole SHARC low-pass alongside the C SINE synth.",
+ "description": "A resonant 2-pole SHARC low-pass in assembly, on LOWPASS 4's controls, alongside the C SINE synth.",
  "license": "GPL-2.0-or-later",
  "device": "digitone-mk2",
  "os": "1.12",

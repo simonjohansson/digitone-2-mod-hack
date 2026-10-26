@@ -1,6 +1,6 @@
 # Digitone II mod
 
-Build the selectable C SINE synth and C LOWPASS filter with DigiHealth:
+Build the selectable C SINE synth and assembly LOWPASS filter with DigiHealth:
 
 ```sh
 mise run build-c
@@ -9,15 +9,18 @@ mise run build-c
 Load `out/c/firmware.syx`. In **FUNC+SYN**, select **SINE** in SYN and
 **LOWPASS** in FLTR. SINE uses synth ID 6; LOWPASS uses filter ID 8. The synth
 and filter have separate memory and run through the stock track pipeline.
-SINE's SYN page has no controls. LOWPASS shows LOWPASS 4's FLTR page and
-keeps its values, but the kernel does not read them yet. AMP, pan and mixer
-remain native.
+SINE's SYN page has no controls. LOWPASS shows LOWPASS 4's FLTR page, and
+its FREQ, RESO and the stock filter envelope (ENV, ATK/DEC/SUS/REL,
+pre-delay) move it. AMP, pan and mixer remain native.
 This is experimental and timing is unqualified.
 
-Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.c` for
-DSP changes. LOWPASS is a one-pole filter with a fixed coefficient of 1/16
-at 48 kHz (about 493 Hz cutoff). Each voice has its own history, reset when
-the adapter signals a new trigger or entry to the filter. Registration
+Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.s` for
+DSP changes. LOWPASS is a resonant 2-pole state-variable low-pass. Its
+cutoff reads the stock cutoff like a MIDI note (FREQ 69 is 440 Hz, held to
+20 Hz..16 kHz) and RESO sets its damping. Each voice has its own state,
+reset when the adapter signals a new trigger or entry to the filter. It is
+written in assembly because the filter callback may use only 20 stack
+bytes, which a C filter of this size exceeds with Selache (elekloader#91). Registration
 uses `mk2/machines.h` and the `mk2_*` contribution tables. Only DN2 OS 1.12
 is implemented.
 
@@ -66,8 +69,10 @@ DigiHealth. A failed build removes stale firmware. Configuration, firmware
 and build reports are ignored.
 
 `mise run test` checks malformed compiler output, artifact bounds and
-independent per-voice phase/retrigger state, the filter's sample bounds and
-the qualification's measurements. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
+independent per-voice phase/retrigger state, and the qualification's
+measurements, including LOWPASS's closed-form response against a
+sample-by-sample model. The assembly filter itself is checked by
+`mise run qualify`. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
 and [filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md).
 
 ## Qualify
@@ -78,10 +83,15 @@ emulator and on the unit: SINE and FM TONE, each through MULTI-MODE and
 LOWPASS on track 1. Each case selects the machines and reads them back
 from RAM, opens the stock filter over MIDI, records notes 36 and 84,
 and checks the FLTR page. Every note must sound at its pitch, and
-LOWPASS must take note 84 down against note 36 by its one-pole response
+LOWPASS at FREQ 72 must take note 84 down against note 36 by its response
 at the synth's pitch, within -2/+3 dB, compared with the open stock
 filter. LOWPASS's page must match LOWPASS 4's pixel for pixel, except for
-an empty response graph. Each of its controls must move with its knob
+an empty response graph. Note 60 must follow LOWPASS's response at four
+FREQ and two RESO settings within 1.5 dB. Over a held note, ENV 0 must
+leave it steady, positive ENV must open then close it, negative ENV the
+reverse, ATK must delay its peak and pre-delay its start. Tracks 1 and 2
+played together must each follow their own FREQ, and FLTR2 BASE and AMP
+VOL must change LOWPASS as they change MULTI-MODE. Each of its controls must move with its knob
 (pre-delay with FUNC+A), its CC and its NRPN, read back from RAM. The
 filter and its values must survive SAVE PROJECT AS into slot 128 and
 LOAD PROJECT. Nothing is checked by hand. The report, the recordings and
@@ -108,8 +118,8 @@ The C example plays one octave above integer MIDI notes 36..84, rounds
 fractional pitch down and writes zeros outside that range. Elekloader supplies
 the linker placement: each mod has 6 KiB of code including its guard and
 7 KiB of data inside the shared 32 KiB reservation. SINE may declare 128
-stack bytes; the filter callback is limited to 20. The adapter adds
-eight bytes to each call. Edited kernels need no instruction allowlist update.
+stack bytes; the filter callback is limited to 20, which the assembly
+LOWPASS meets by using none. The adapter adds eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader
 

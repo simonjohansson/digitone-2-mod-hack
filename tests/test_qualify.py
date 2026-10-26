@@ -13,11 +13,19 @@ def tone(hz, seconds=0.8, amplitude=0.01):
     return np.concatenate([silence, amplitude * np.sin(2 * np.pi * hz * t), silence])
 
 
-def one_pole(x, a=1 / 16):
-    y, out = 0.0, np.empty_like(x)
-    for i, v in enumerate(x):
-        y += a * (v - y)
-        out[i] = y
+def svf(x, freq, reso=0):
+    """The example LOWPASS, sample by sample, with the envelope at rest."""
+    cutoff = min(max(440 * 2 ** ((freq - 69) / 12), 20), 16000)
+    v = np.pi * cutoff / qualify.RATE
+    g = v * (15 - v * v) / (15 - 6 * v * v)
+    k = 2 - 1.96 * reso / 128
+    a1 = 1 / (1 + g * (g + k))
+    a2, ic1, ic2, out = g * a1, 0.0, 0.0, np.empty_like(x)
+    a3 = g * a2
+    for i, s in enumerate(x):
+        v3 = s - ic2
+        v1, v2 = a1 * ic1 + a2 * v3, ic2 + a2 * ic1 + a3 * v3
+        ic1, ic2, out[i] = 2 * v1 - ic1, 2 * v2 - ic2, v2
     return out
 
 
@@ -35,14 +43,27 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(qualify.pitch_hz(x), 0)
 
     def test_the_closed_form_response_matches_the_example_low_pass(self):
-        for synth in (qualify.SINE, qualify.FM_TONE):
-            low, high = (tone(qualify.pitch_of(synth, n)) for n in (qualify.LOW, qualify.HIGH))
-            drop = ((qualify.level_db(one_pole(low)) - qualify.level_db(one_pole(high)))
-                    - (qualify.level_db(low) - qualify.level_db(high)))
-            expected = (qualify.lowpass_db(qualify.pitch_of(synth, qualify.LOW))
-                        - qualify.lowpass_db(qualify.pitch_of(synth, qualify.HIGH)))
-            self.assertAlmostEqual(drop, expected, delta=0.2)
-        self.assertAlmostEqual(qualify.lowpass_db(0), 0)
+        hz = qualify.pitch_of(qualify.SINE, 60)
+        x = tone(hz)
+        for freq, reso in ((50, 0), (72, 0), (90, 0), (72, 100), (72, 120)):
+            got = qualify.level_db(svf(x, freq, reso)) - qualify.level_db(x)
+            self.assertAlmostEqual(got, qualify.svf_db(hz, freq, reso), delta=0.1)
+        self.assertAlmostEqual(qualify.svf_db(1e-3, 72), 0, delta=1e-6)
+
+    def test_tone_level_separates_two_notes(self):
+        x = tone(523.25, amplitude=0.01) + tone(1046.5, amplitude=0.001)
+        self.assertAlmostEqual(qualify.tone_db(x, 523.25), 20 * np.log10(0.01 / np.sqrt(2)), delta=0.1)
+        self.assertAlmostEqual(qualify.tone_db(x, 1046.5), 20 * np.log10(0.001 / np.sqrt(2)), delta=0.1)
+        self.assertEqual(qualify.tone_db(np.zeros(qualify.RATE), 440), -np.inf)
+
+    def test_window_levels_follow_a_changing_level(self):
+        x = tone(1000, seconds=1)
+        x[qualify.RATE // 5 + qualify.RATE // 2:] *= 0.1  # 20 dB down halfway through
+        w = qualify.window_db(x)
+        self.assertEqual(len(w), 49)
+        self.assertAlmostEqual(w[5], 20 * np.log10(0.01 / np.sqrt(2)), delta=0.1)
+        self.assertAlmostEqual(w[5] - w[-2], 20, delta=0.1)
+        self.assertEqual(len(qualify.window_db(np.zeros(qualify.RATE))), 0)
 
     def test_page_regions(self):
         empty = np.zeros((64, 128), dtype=np.uint8)

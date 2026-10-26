@@ -26,7 +26,9 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / 'out/qualify'
 RATE = 48000
 # OS 1.12: track 1's sound record, found by diffing emulator states and read back on the unit.
-SOUND = 0x4210d0c0
+# Track n's follows at a stride of 0x48b bytes (found by each MIDI channel's FREQ).
+SOUND, STRIDE = 0x4210d0c0, 0x48b
+VOL = (0xc8, 90)  # AMP VOL: its sound-record byte and channel CC
 SYNTH_TYPE, FILTER_TYPE = 0xde, 0xdf
 # The MACHINE SEL lists, by type ID, in screen order. Neither list wraps.
 LISTS = {'SYN': [0, 2, 1, 3, 6, 4], 'FLTR': [0, 1, 4, 3, 5, 2, 8]}
@@ -38,6 +40,7 @@ NAMES = {('SYN', 0): 'FM TONE', ('SYN', 6): 'SINE', ('FLTR', 0): 'MULTI-MODE', (
 OPEN = {16: (0x9a, 127), 17: (0x9c, 0), 18: (0x98, 0), 24: (0x9e, 64),
         26: (0xb2, 0), 27: (0xac, 0), 28: (0xae, 127)}
 LOW, HIGH = 36, 84
+CUTOFF = 72  # LOWPASS's FREQ in the combinations: 523 Hz
 # LOWPASS 4's controls, which the custom filter's page shows: the sound-record word,
 # channel 1 CC, NRPN 1:n and encoder 1..8 (A..H). Pre-delay is FUNC+A.
 CONTROLS = {'ATK': (0xa2, 20, 16, 1), 'DEC': (0xa4, 21, 17, 2), 'SUS': (0xa6, 22, 18, 3),
@@ -85,10 +88,34 @@ def pitch_of(synth, note):
     return (2 if synth == SINE else 1) * 440 * 2 ** ((note - 69) / 12)
 
 
-def lowpass_db(hz, a=1 / 16):
-    """The example LOWPASS's gain: the one-pole y += a(x - y)."""
-    w = 2 * np.pi * hz / RATE
-    return 20 * np.log10(a / abs(1 - (1 - a) * np.exp(-1j * w)))
+def svf_db(hz, freq, reso=0):
+    """The example LOWPASS's gain at HZ for FREQ and RESO (0..127), with the envelope at rest:
+    its cutoff read like a MIDI note, its Pade tan and its 2-pole topology-preserving response."""
+    cutoff = min(max(440 * 2 ** ((freq - 69) / 12), 20), 16000)
+    x = np.pi * cutoff / RATE
+    g = x * (15 - x * x) / (15 - 6 * x * x)
+    k, t = 2 - 1.96 * reso / 128, np.tan(np.pi * hz / RATE) / g
+    return -10 * np.log10((1 - t * t) ** 2 + (k * t) ** 2)
+
+
+def tone_db(x, hz):
+    """The level of one sinusoid in the held note, fitted by least squares."""
+    x = held(x)
+    if not len(x):
+        return -np.inf
+    n = 2 * np.pi * hz * np.arange(len(x)) / RATE
+    fit = np.linalg.lstsq(np.stack([np.sin(n), np.cos(n)], 1), x, rcond=None)[0]
+    return 20 * np.log10(np.hypot(*fit) / np.sqrt(2))
+
+
+def window_db(x, ms=20):
+    """Levels of consecutive windows over the audible part, in dB."""
+    loud = np.nonzero(np.abs(x) > 1e-4)[0]
+    if len(loud) < RATE // 4:
+        return np.array([])
+    x, n = x[loud[0]:loud[-1]], RATE * ms // 1000
+    return np.array([20 * np.log10(np.sqrt(np.mean(x[i:i + n] ** 2)) + 1e-12)
+                     for i in range(0, len(x) - n, n)])
 
 
 def labels_shown(screen):
@@ -207,18 +234,18 @@ class Target:
                 return (after > before) == (detents > 0)
         return False
 
-    def machines(self):
-        synth, filter_ = self.peek(SOUND + SYNTH_TYPE, 2)
+    def machines(self, track=1):
+        synth, filter_ = self.peek(SOUND + STRIDE * (track - 1) + SYNTH_TYPE, 2)
         return synth, filter_
 
-    def select(self, synth, filter_):
-        """Select track 1's machines. Keys can be lost, so read the result back."""
+    def select(self, synth, filter_, track=1):
+        """Select a track's machines. Keys can be lost, so read the result back."""
         self.tap('STOP', 'STOP', 'NO', 'NO')
-        self.chord('TRK', '1')
+        self.chord('TRK', str(track))
         for side, want, index in (('SYN', synth, 0), ('FLTR', filter_, 1)):
             order = LISTS[side]
             for attempt in range(6):
-                have = self.machines()[index]
+                have = self.machines(track)[index]
                 if have == want:
                     break
                 if attempt == 5:
@@ -229,7 +256,7 @@ class Target:
                 self.tap('LEFT' if side == 'SYN' else 'RIGHT', *['UP'] * (len(order) + 1))
                 self.tap(*['DOWN'] * order.index(want), 'YES')
         self.tap('NO', 'NO')
-        return self.machines() == (synth, filter_)
+        return self.machines(track) == (synth, filter_)
 
     def project_list(self, item):
         """Open PROJECT's LOAD PROJECT (0) or SAVE PROJECT AS (1) list."""
@@ -278,11 +305,11 @@ class Target:
         self.tap('NO', 'NO', 'NO')
         return row if active is not None and same_slot(active, row) else None
 
-    def open_filters(self):
-        """Set the stock filters wide open on track 1; True when the sound record agrees."""
+    def open_filters(self, track=1):
+        """Set a track's stock filters wide open; True when its sound record agrees."""
         for cc, (_, value) in OPEN.items():
-            self.midi(bytes([0xb0, cc, value]))
-        record = self.peek(SOUND, 0x100)
+            self.midi(bytes([0xb0 | (track - 1), cc, value]))
+        record = self.peek(SOUND + STRIDE * (track - 1), 0x100)
         return all(record[offset] == value for offset, value in OPEN.values())
 
     def page(self, key):
@@ -456,6 +483,8 @@ def run_cases(t, check):
             if not check(combo + ': selected', t.select(synth, filter_), machines=t.machines()):
                 continue
             check(combo + ': stock filters open', t.open_filters())
+            if filter_ == LOWPASS:
+                t.midi(bytes([0xb0, 16, CUTOFF]))
             for note in (LOW, HIGH):
                 name = '%s-%s-%d' % (NAMES['SYN', synth], NAMES['FLTR', filter_], note)
                 with t.recording(name.replace(' ', '')) as take:
@@ -473,11 +502,14 @@ def run_cases(t, check):
         # the high note down by its own response. Harmonics above the fundamental can add a little.
         drop = ((levels[LOWPASS, LOW] - levels[LOWPASS, HIGH])
                 - (levels[MULTI_MODE, LOW] - levels[MULTI_MODE, HIGH]))
-        expected = lowpass_db(pitch_of(synth, LOW)) - lowpass_db(pitch_of(synth, HIGH))
+        expected = svf_db(pitch_of(synth, LOW), CUTOFF) - svf_db(pitch_of(synth, HIGH), CUTOFF)
         check('%s: LOWPASS attenuates note %d against note %d by its response' % (NAMES['SYN', synth], HIGH, LOW),
               -2 <= drop - expected <= 3, extra_attenuation_db=round(float(drop), 2),
               expected_db=round(float(expected), 2))
     run_controls(t, check)
+    run_response(t, check)
+    run_tracks(t, check)
+    run_downstream(t, check)
     saved = run_save(t, check)
     check('runs without faults', t.healthy())
     return saved
@@ -500,6 +532,106 @@ def run_controls(t, check):
         check('LOWPASS %s: CC %d sets it' % (name, cc), t.word(offset) >> 8 == 33, word=hex(t.word(offset)))
         t.nrpn(1, nrpn, 77 << 7)
         check('LOWPASS %s: NRPN 1:%d sets it' % (name, nrpn), t.word(offset) >> 8 == 77, word=hex(t.word(offset)))
+
+
+def run_response(t, check):
+    """The kernel follows FREQ, RESO and the stock filter envelope (ENV, ATK, pre-delay)."""
+    if not check('SINE + LOWPASS: selected for its response', t.select(SINE, LOWPASS), machines=t.machines()):
+        return
+    t.open_filters()
+    hz = pitch_of(SINE, 60)
+
+    def take(name, **values):
+        settings = {'FREQ': 127, 'RESO': 0, 'ENV': 64, 'ATK': 0, 'DEC': 64, 'SUS': 0, 'DELAY': 0, **values}
+        for control, value in settings.items():
+            t.midi(bytes([0xb0, CONTROLS[control][1], value]))
+        with t.recording('LOWPASS-' + name) as recorded:
+            t.note(60)
+        return recorded.samples
+
+    open_db = level_db(take('open'))
+    for freq, reso in ((50, 0), (64, 0), (72, 0), (90, 0), (72, 100), (72, 120)):
+        got = level_db(take('f%d-r%d' % (freq, reso), FREQ=freq, RESO=reso)) - open_db
+        expected = svf_db(hz, freq, reso) - svf_db(hz, 127)
+        check('LOWPASS FREQ %d RESO %d: note 60 at its response' % (freq, reso), abs(got - expected) <= 1.5,
+              level_db=round(float(got), 2), expected_db=round(float(expected), 2))
+    # The envelope moves the cutoff over a held note. Compare 20 ms windows from 60 to 760 ms
+    # (the note ends at 800) with the same note through a fixed cutoff, which cancels SINE's drift.
+    body = slice(3, 38)
+    fixed = window_db(take('f110', FREQ=110))
+    rest = window_db(take('env-0', FREQ=50))
+    rise = window_db(take('env-up', FREQ=50, ENV=127))
+    slow = window_db(take('env-up-atk', FREQ=50, ENV=127, ATK=40))
+    late = window_db(take('env-up-delay', FREQ=50, ENV=127, DELAY=60))
+    dip = window_db(take('env-down', FREQ=110, ENV=0))
+    if not check('LOWPASS envelope notes audible', all(len(w) >= 40 for w in (fixed, rest, rise, slow, late, dip))):
+        return
+    fixed, rest, rise, slow, late, dip = (w[body] for w in (fixed, rest, rise, slow, late, dip))
+    flat = np.ptp(rest - fixed)
+    check('LOWPASS ENV 0: the cutoff stays put', flat <= 1, range_db=round(float(flat), 2))
+    floor = np.median(rest - fixed)
+    up = rise - fixed - floor
+    check('LOWPASS ENV +63: starts open and closes', up[0] >= 10 and up[-1] <= up[0] - 6,
+          start_db=round(float(up[0]), 2), end_db=round(float(up[-1]), 2))
+    down = dip - fixed
+    check('LOWPASS ENV -64: starts closed and opens', down[0] <= -10 and down[-1] >= down[0] + 6,
+          start_db=round(float(down[0]), 2), end_db=round(float(down[-1]), 2))
+    peak_ms = [20 * int(np.argmax(w - fixed)) for w in (rise, slow)]
+    check('LOWPASS ATK 40: the envelope peaks later', peak_ms[1] >= peak_ms[0] + 100, peak_ms=peak_ms)
+    opened_ms = [20 * int(np.argmax(w - fixed - floor >= 10)) for w in (rise, late)]
+    check('LOWPASS pre-delay 60: the envelope starts later', opened_ms[1] >= opened_ms[0] + 40, opened_ms=opened_ms)
+
+
+def run_tracks(t, check):
+    """Two tracks with the custom filter, played together, each follow their own FREQ."""
+    if not (check('tracks 1 and 2: SINE + LOWPASS selected', t.select(SINE, LOWPASS, 1) and t.select(SINE, LOWPASS, 2),
+                  machines=[t.machines(1), t.machines(2)])
+            and check('tracks 1 and 2: filters open', t.open_filters(1) and t.open_filters(2))):
+        return
+    notes = {1: 60, 2: 72}
+    levels = {}
+    for name, freqs in (('open', {1: 127, 2: 127}), ('set', {1: 50, 2: 110})):
+        for track, freq in freqs.items():
+            t.midi(bytes([0xb0 | (track - 1), 16, freq]))
+        with t.recording('TRACKS-' + name) as recorded:
+            for track, note in notes.items():
+                t.midi(bytes([0x90 | (track - 1), note, 100]))
+            t.wait(800)
+            for track, note in notes.items():
+                t.midi(bytes([0x80 | (track - 1), note, 0]))
+            t.wait(400)
+        levels[name] = {track: tone_db(recorded.samples, pitch_of(SINE, note)) for track, note in notes.items()}
+    for track, freq in ((1, 50), (2, 110)):
+        hz = pitch_of(SINE, notes[track])
+        got = levels['set'][track] - levels['open'][track]
+        expected = svf_db(hz, freq) - svf_db(hz, 127)
+        check('track %d: its note follows its own FREQ %d' % (track, freq), abs(got - expected) <= 1.5,
+              level_db=round(float(got), 2), expected_db=round(float(expected), 2))
+
+
+def run_downstream(t, check):
+    """FLTR2 BASE and AMP VOL change LOWPASS's output as they change MULTI-MODE's."""
+    vol = t.peek(SOUND + VOL[0], 1)[0]
+    changes = {}
+    for filter_ in (MULTI_MODE, LOWPASS):
+        if not check('SINE + %s: selected for FLTR2 and AMP' % NAMES['FLTR', filter_], t.select(SINE, filter_),
+                     machines=t.machines()):
+            return
+        t.open_filters()
+        levels = []
+        for name, cc, value in (('ref', 27, 0), ('base', 27, 64), ('vol', VOL[1], vol // 2)):
+            t.midi(bytes([0xb0, 27, 0]))
+            t.midi(bytes([0xb0, VOL[1], vol]))
+            t.midi(bytes([0xb0, cc, value]))
+            with t.recording('%s-%s' % (NAMES['FLTR', filter_], name)) as recorded:
+                t.note(LOW)
+            levels.append(level_db(recorded.samples))
+        t.midi(bytes([0xb0, VOL[1], vol]))
+        changes[filter_] = (levels[1] - levels[0], levels[2] - levels[0])
+    for i, name in enumerate(('FLTR2 BASE 64', 'AMP VOL halved')):
+        stock, custom = changes[MULTI_MODE][i], changes[LOWPASS][i]
+        check('LOWPASS: %s changes it as it changes MULTI-MODE' % name,
+              stock <= -3 and abs(custom - stock) <= 0.5, stock_db=round(float(stock), 2), lowpass_db=round(float(custom), 2))
 
 
 def run_save(t, check):
