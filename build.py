@@ -126,9 +126,13 @@ def main():
         kernel = source_dir / (stem + '.c')
         folder = out / kind
         folder.mkdir()
-        flags = ['-proc', 'ADSP-21569', '-char-size-8', '-O1', '-no-std-inc',
-                 '-I', selache / 'libsel/include', '-I', VENDOR / 'elekloader/sdk/include']
-        run([tools / 'selcc', *flags, '-c', '-o', folder / (stem + '.doj'), kernel])
+        if kernel.exists():
+            flags = ['-proc', 'ADSP-21569', '-char-size-8', '-O1', '-no-std-inc',
+                     '-I', selache / 'libsel/include', '-I', VENDOR / 'elekloader/sdk/include']
+            run([tools / 'selcc', *flags, '-c', '-o', folder / (stem + '.doj'), kernel])
+        else:  # the filter is assembly: it needs no stack (see elekloader#91)
+            kernel = source_dir / (stem + '.s')
+            run([tools / 'selas', '-proc', 'ADSP-21569', '-o', folder / (stem + '.doj'), kernel])
         bounds = machine_layout(kind)
         layout = folder / 'layout.ldf'
         layout.write_text("""ARCHITECTURE(ADSP-21569)

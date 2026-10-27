@@ -14,7 +14,7 @@
   "artifact": "sine.sharc.json"
  },
  "resources": {
-  "core": "0.1"
+  "core": "0.2"
  },
  "sources": [
   "machine.c"
