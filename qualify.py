@@ -371,8 +371,13 @@ class Target:
         if row is None or not np.array_equal(row, highlighted_row(self.screen())) or not self.may_overwrite(row):
             self.tap('NO', 'NO', 'NO')
             return None
-        for _ in range(3 if not empty_slot(row) else 2):  # overwrite 'NAME'? Y/N, the name editor, YES:SAVE
-            self.tap('YES')
+        taps = 3 if not empty_slot(row) else 2  # overwrite 'NAME'? Y/N, the name editor, YES:SAVE
+        for i in range(taps):
+            try:
+                self.tap('YES')
+            except TimeoutError:  # the last YES starts the write, which holds its release back
+                if i < taps - 1:
+                    raise
             self.wait(800)
         self.wait(15000)  # keys are not served while the project is written
         self.tap('NO', 'NO', 'NO')
@@ -555,7 +560,7 @@ def run_cases(t, check, cases=None):
     for name, case in CASES.items():
         if cases is None or name in cases:
             result = case(t, check)
-            if name in ('save', 'g') and result is not None:
+            if name == 'save':
                 saved = result
     check('runs without faults', t.healthy())
     return saved
@@ -865,21 +870,23 @@ def run_switch(t, check):
 
 
 def run_save(t, check):
-    """LOWPASS and its values survive SAVE PROJECT AS and LOAD PROJECT; the saved project's row."""
+    """LOWPASS and its values, G included, survive SAVE PROJECT AS and LOAD PROJECT; the saved
+    project's row."""
     if not check('SINE + LOWPASS: selected for saving', t.select(SINE, LOWPASS), machines=t.machines()):
         return None
-    for i, (_, _, nrpn, _) in enumerate(CONTROLS.values()):
+    controls = [*CONTROLS.values(), G]
+    for i, (_, _, nrpn, _) in enumerate(controls):
         t.nrpn(1, nrpn, (20 + 9 * i) << 7)
-    saved = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
+    saved = [list(t.machines()), [t.word(offset) for offset, *_ in controls]]
     with t.recording('SAVE-before') as before:
         t.note(60)
     if not check('the project saves into slot %d' % SAVE_SLOT, t.save_project() is not None):
         return None
-    for _, _, nrpn, _ in CONTROLS.values():
+    for _, _, nrpn, _ in controls:
         t.nrpn(1, nrpn, 100 << 7)  # unsaved, so loading must discard it
     row = t.load_project()
-    loaded = [list(t.machines()), [t.word(offset) for offset, *_ in CONTROLS.values()]]
-    check('LOWPASS and its values survive saving and loading the project',
+    loaded = [list(t.machines()), [t.word(offset) for offset, *_ in controls]]
+    check('LOWPASS and its values, G included, survive saving and loading the project',
           loaded == saved and saved[0] == [SINE, LOWPASS], saved=saved, loaded=loaded)
     with t.recording('SAVE-after') as after:
         t.note(60)
@@ -890,19 +897,19 @@ def run_save(t, check):
 
 def run_g(t, check):
     """LOWPASS's G (MODE): the stock filters' slot 66 unchanged, its label, encoder, CC, NRPN, the
-    high-pass response and curve, a lock (emulator only) and saving."""
+    high-pass response and curve, and a lock (emulator only). The save case saves it."""
     offset, cc, nrpn, encoder = G
     if not check('SINE + MULTI-MODE: selected for G', t.select(SINE, MULTI_MODE), machines=t.machines()):
-        return None
+        return
     t.midi(bytes([0xb0, cc, 77]))
     check("MULTI-MODE: CC 18 still sets its TYPE", t.word(offset) == 77 << 8, word=hex(t.word(offset)))
     if not check('SINE + LOWPASS 4: selected for G', t.select(SINE, LOWPASS_4), machines=t.machines()):
-        return None
+        return
     t.midi(bytes([0xb0, cc, 20]))
     check('LOWPASS 4: CC 18 leaves slot 66 alone (it has no G)', t.word(offset) == 77 << 8, word=hex(t.word(offset)))
     stock, mode = t.page('FLTR'), text(t.page('AMP'), MODE_LABEL)
     if not check('SINE + LOWPASS: selected for G', t.select(SINE, LOWPASS), machines=t.machines()):
-        return None
+        return
     page = t.page('FLTR')
     check('LOWPASS: G shows its label, MODE, where LOWPASS 4 has a dotted cell',
           mode.size and np.array_equal(text(page, G_LABEL), mode) and stock[G_CELL].any()
@@ -939,14 +946,6 @@ def run_g(t, check):
         step1, step9 = change(before[0], after[0]), change(before[1], after[1])
         check('LOWPASS: G locked on step 9 changes that step only', step9 >= 1 and step1 <= 0.5,
               step9_db=round(step9, 2), step1_db=round(step1, 2))
-    t.nrpn(1, nrpn, 99 << 7)
-    if not check('the project saves into slot %d' % SAVE_SLOT, t.save_project() is not None):
-        return None
-    t.nrpn(1, nrpn, 10 << 7)  # unsaved, so loading must discard it
-    row = t.load_project()
-    check('LOWPASS G survives saving and loading the project',
-          t.machines() == (SINE, LOWPASS) and t.word(offset) >> 8 == 99, machines=t.machines(), word=hex(t.word(offset)))
-    return row
 
 
 CASES = {'combinations': run_combinations, 'controls': run_controls, 'response': run_response,
