@@ -33,6 +33,9 @@ SYNTH_TYPE, FILTER_TYPE = 0xde, 0xdf
 # The MACHINE SEL lists, by type ID, in screen order. Neither list wraps.
 LISTS = {'SYN': [0, 2, 1, 3, 6, 4], 'FLTR': [0, 1, 4, 3, 5, 2, 8]}
 FM_TONE, SINE = 0, 6
+# SINE's TUNE and OCT (sound slots 26 and 33) by the CCs FM TONE has for them; centred, as the
+# pitch checks assume. A project's FM TONE leaves its own values in those slots.
+SINE_CENTRE = {41: 64, 59: 64}
 MULTI_MODE, LOWPASS_4, LOWPASS = 0, 1, 8
 NAMES = {('SYN', 0): 'FM TONE', ('SYN', 6): 'SINE', ('FLTR', 0): 'MULTI-MODE', ('FLTR', 8): 'LOWPASS'}
 # Channel 1 CCs that open the stock filters, with the sound-record word each one sets:
@@ -340,6 +343,9 @@ class Target:
                 self.tap('LEFT' if side == 'SYN' else 'RIGHT', *['UP'] * (len(order) + 1))
                 self.tap(*['DOWN'] * order.index(want), 'YES')
         self.tap('NO', 'NO')
+        if synth == SINE:
+            for cc, value in SINE_CENTRE.items():
+                self.midi(bytes([0xb0 | (track - 1), cc, value]))
         return self.machines(track) == (synth, filter_)
 
     def project_list(self, item):
