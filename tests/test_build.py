@@ -121,5 +121,38 @@ int main(void) {
             subprocess.run([str(p/'test')],check=True)
 
 
+
+class FilterTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('cc'), 'native C compiler unavailable')
+    def test_modes_reset_and_independent_slots(self):
+        source = build.ROOT / 'examples/sharc-filter/filter.c'
+        include = build.VENDOR / 'elekloader/sdk/include'
+        with tempfile.TemporaryDirectory() as work:
+            p = Path(work)
+            (p/'test.c').write_text('#include <assert.h>\n#include <math.h>\n'
+                + '#include "'+str(source)+'"\n'+'''
+static struct voice state[2];
+static float buf[32];
+/* N blocks of DC 1.0 through slot SLOT; the last sample. */
+static float run(int slot, float g, int blocks, unsigned flags) {
+ struct dn2_filter_input in={buf,(uint32_t)slot,flags,0.5f,0.0f,g,&state[slot]};
+ for(int b=0;b<blocks;++b){ for(int i=0;i<32;++i) buf[i]=1.0f; sharc_filter_render(&in); in.flags=0; }
+ return buf[31];
+}
+int main(void) {
+ assert(sharc_filter_state_bytes==sizeof(struct voice));
+ assert(fabsf(run(0,0.0f,200,DN2_FILTER_RESET)-1.0f)<1e-3f);  /* the low-pass passes DC */
+ struct voice kept=state[0];
+ assert(fabsf(run(1,1.0f,200,DN2_FILTER_RESET))<1e-3f);       /* the high-pass blocks it */
+ assert(state[0].ic1==kept.ic1 && state[0].ic2==kept.ic2);      /* slot 1 left slot 0 alone */
+ run(0,0.0f,1,DN2_FILTER_RESET);
+ assert(buf[0]<0.5f);                                           /* RESET starts from rest */
+ return 0;
+}
+''')
+            subprocess.run(['cc','-std=c99','-Wall','-Werror','-I',str(include),str(p/'test.c'),'-o',str(p/'test'),'-lm'],check=True)
+            subprocess.run([str(p/'test')],check=True)
+
+
 if __name__ == '__main__':
     unittest.main()

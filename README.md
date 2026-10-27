@@ -1,6 +1,6 @@
 # Digitone II mod
 
-Build the selectable C SINE synth and assembly LOWPASS filter with DigiHealth:
+Build the selectable SINE synth and LOWPASS filter, both in C, with DigiHealth:
 
 ```sh
 mise run build-c
@@ -19,13 +19,11 @@ LOWPASS's own response, from the `curve` callback in
 `examples/sharc-filter/machine.c`. AMP, pan and mixer remain native.
 This is experimental and timing is unqualified.
 
-Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.s` for
+Edit `examples/sharc-sine/sine.c` or `examples/sharc-filter/filter.c` for
 DSP changes. LOWPASS is a resonant 2-pole state-variable low-pass. Its
 cutoff reads the stock cutoff like a MIDI note (FREQ 69 is 440 Hz, held to
 20 Hz..16 kHz) and RESO sets its damping. Each voice has its own state,
-reset when the adapter signals a new trigger or entry to the filter. It is
-written in assembly because the filter callback may use only 20 stack
-bytes, which a C filter of this size exceeds with Selache (elekloader#91). Registration
+reset when the adapter signals a new trigger or entry to the filter. Registration
 uses `mk2/machines.h` and the `mk2_*` contribution tables. Only DN2 OS 1.12
 is implemented.
 
@@ -77,7 +75,7 @@ and build reports are ignored.
 `mise run test` checks the toolchain pin, failed builds,
 independent per-voice phase/retrigger state, and the qualification's
 measurements, including LOWPASS's closed-form response against a
-sample-by-sample model. The assembly filter itself is checked by
+sample-by-sample model. The compiled filter itself is checked by
 `mise run qualify`. See the [voice contract](vendor/elekloader/docs/MACHINES-DN2-VOICE.md)
 and [filter interface](vendor/elekloader/docs/MACHINES-DN2-FILTER.md).
 
@@ -132,9 +130,8 @@ part of it; after a failure, rerun only the failed cases on the same candidate.
 The C example plays one octave above integer MIDI notes 36..84, rounds
 fractional pitch down and writes zeros outside that range. Elekloader supplies
 the linker placement: each mod has its own 64 KiB, with 30 KiB of code
-including its guard and 31 KiB of data. SINE may declare 128
-stack bytes; the filter callback is limited to 20, which the assembly
-LOWPASS meets by using none. The adapter adds eight bytes to each call. Edited kernels need no instruction allowlist update.
+including its guard and 31 KiB of data, and its own 4 KiB stack, of which
+the callback may declare 2,048 bytes. The adapter adds eight bytes to each call. Edited kernels need no instruction allowlist update.
 
 ## Sync Elekloader
 

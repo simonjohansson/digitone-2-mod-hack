@@ -14,7 +14,7 @@ import sys
 ROOT = Path(__file__).resolve().parent
 VENDOR = ROOT / 'vendor/elekloader'
 SELACHE_PIN = '2b26d3b75c53063575bc5c820fa0d38879335187'
-TOOLS = ('selcc', 'selas', 'seld')
+TOOLS = ('selcc', 'seld')
 sys.path.insert(0, str(VENDOR))
 
 
@@ -61,7 +61,7 @@ def main():
     revision = check_toolchain(selache)
     tools = selache / 'target/release'
     require(all((tools / name).is_file() for name in TOOLS),
-            'SELACHE must contain target/release/{selcc,selas,seld}')
+            'SELACHE must contain target/release/{selcc,seld}')
     require((VENDOR / 'elekloader/__init__.py').is_file(), 'initialize the Elekloader submodule')
     from elekloader import elemod, lint, patch
     from elekloader.sdk import build as sdk
@@ -77,13 +77,9 @@ def main():
         kernel = source_dir / (stem + '.c')
         folder = out / kind
         folder.mkdir()
-        if kernel.exists():
-            flags = ['-proc', 'ADSP-21569', '-char-size-8', '-O1', '-no-std-inc',
-                     '-I', selache / 'libsel/include', '-I', VENDOR / 'elekloader/sdk/include']
-            run([tools / 'selcc', *flags, '-c', '-o', folder / (stem + '.doj'), kernel])
-        else:  # the filter is assembly: it needs no stack (see elekloader#91)
-            kernel = source_dir / (stem + '.s')
-            run([tools / 'selas', '-proc', 'ADSP-21569', '-o', folder / (stem + '.doj'), kernel])
+        flags = ['-proc', 'ADSP-21569', '-char-size-8', '-O1', '-no-std-inc',
+                 '-I', selache / 'libsel/include', '-I', VENDOR / 'elekloader/sdk/include']
+        run([tools / 'selcc', *flags, '-c', '-o', folder / (stem + '.doj'), kernel])
         layout = folder / 'layout.ldf'
         layout.write_text(machine_linker_script(kind))
         exe = folder / (stem + '.dxe')
