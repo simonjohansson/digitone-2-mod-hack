@@ -48,7 +48,7 @@ Build the pinned open [Selache](https://github.com/js216/selache) compiler:
 git clone https://github.com/js216/selache.git "$HOME/src/selache"
 cd "$HOME/src/selache"
 git switch --detach 2b26d3b75c53063575bc5c820fa0d38879335187
-mise exec rust@1.98.1 -- cargo build --release --locked -p selcc -p selas -p seld -p seldump
+mise exec rust@1.98.1 -- cargo build --release --locked -p selcc -p selas -p seld
 ```
 
 In this repository:
@@ -62,18 +62,19 @@ mise install
 mise run build-c
 ```
 
-`SELACHE` points to the clean compiler checkout with its four tools built.
+`SELACHE` points to the clean compiler checkout with its three tools built.
 Python 3.12.13 and uv are managed by mise. The build needs no Python
 packages; `mise run test` and `mise run qualify` fetch pinned ones with uv.
 
 ## Build and test
 
-`mise run build-c` compiles the current source, packages it through the
-Elekloader submodule and writes verified firmware with core, machines and
+`mise run build-c` compiles the current source, links it with the linker
+script Elekloader's SDK writes, turns the executable into a machine with the
+SDK (no address appears in this repository) and writes verified firmware with core, machines and
 DigiHealth. A failed build removes stale firmware. Configuration, firmware
 and build reports are ignored.
 
-`mise run test` checks malformed compiler output, artifact bounds and
+`mise run test` checks the toolchain pin, failed builds,
 independent per-voice phase/retrigger state, and the qualification's
 measurements, including LOWPASS's closed-form response against a
 sample-by-sample model. The assembly filter itself is checked by
