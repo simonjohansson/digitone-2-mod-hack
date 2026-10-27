@@ -131,8 +131,8 @@ part of it; after a failure, rerun only the failed cases on the same candidate.
 
 The C example plays one octave above integer MIDI notes 36..84, rounds
 fractional pitch down and writes zeros outside that range. Elekloader supplies
-the linker placement: each mod has 6 KiB of code including its guard and
-7 KiB of data inside the shared 32 KiB reservation. SINE may declare 128
+the linker placement: each mod has its own 64 KiB, with 30 KiB of code
+including its guard and 31 KiB of data. SINE may declare 128
 stack bytes; the filter callback is limited to 20, which the assembly
 LOWPASS meets by using none. The adapter adds eight bytes to each call. Edited kernels need no instruction allowlist update.
 
