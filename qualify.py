@@ -41,12 +41,13 @@ OPEN = {16: (0x9a, 127), 17: (0x9c, 0), 18: (0x98, 0), 24: (0x9e, 64),
         26: (0xb2, 0), 27: (0xac, 0), 28: (0xae, 127)}
 LOW, HIGH = 36, 84
 CUTOFF = 72  # LOWPASS's FREQ in the combinations: 523 Hz
-# LOWPASS 4's controls, which the custom filter's page shows, and LOWPASS's own G (MODE: 0..63
-# low-pass, 64..127 high-pass), slot 66: the sound-record word, channel 1 CC, NRPN 1:n and
-# encoder 1..8 (A..H). Pre-delay is FUNC+A.
+# LOWPASS 4's controls, which the custom filter's page shows: the sound-record word,
+# channel 1 CC, NRPN 1:n and encoder 1..8 (A..H). Pre-delay is FUNC+A.
 CONTROLS = {'ATK': (0xa2, 20, 16, 1), 'DEC': (0xa4, 21, 17, 2), 'SUS': (0xa6, 22, 18, 3),
             'REL': (0xa8, 23, 19, 4), 'FREQ': (0x9a, 16, 20, 5), 'RESO': (0x9c, 17, 21, 6),
-            'ENV': (0x9e, 24, 26, 8), 'DELAY': (0xa0, 19, 23, None), 'G': (0x98, 18, 22, 7)}
+            'ENV': (0x9e, 24, 26, 8), 'DELAY': (0xa0, 19, 23, None)}
+# LOWPASS's own G (MODE: 0..63 low-pass, 64..127 high-pass), slot 66, as the controls above.
+G = (0x98, 18, 22, 7)
 GRAPH = np.s_[40:57, 21:72]  # FLTR page 1's response graph, with its frame
 G_CELL = np.s_[38:64, 73:101]  # its G: the picture above and the label
 G_LABEL = np.s_[57:64, 73:101]
@@ -55,7 +56,7 @@ MODE_LABEL = np.s_[57:64, 46:74]  # AMP page 1's MODE, in the same font
 # FREQ 67, RESO 68, ENV 69, pre-delay 70, ATK..REL 71..74). Key tracking at 127 adds 0.0826 to the
 # cutoff (10.57 FREQ) per octave above note 48. WAVE 0 is a triangle and 2 a square; MODE 0 runs
 # free and 1 restarts on each note; SPD 64 holds the LFO still and DEP 64 is no depth.
-CCS = {**{name: cc for name, (_, cc, _, _) in CONTROLS.items()}, 'KT': 26,
+CCS = {**{name: cc for name, (_, cc, _, _) in CONTROLS.items()}, 'G': G[1], 'KT': 26,
        'SPD': 102, 'MULT': 103, 'DEST': 105, 'WAVE': 106, 'MODE': 108, 'DEP': 109}
 KT_PER_OCTAVE = 0.0826 * 128
 REST = {'FREQ': 127, 'RESO': 0, 'ENV': 64, 'ATK': 0, 'DEC': 64, 'SUS': 0, 'REL': 64, 'DELAY': 0,
@@ -147,11 +148,12 @@ def labels_shown(screen):
 PEAK_DB = (0, 1, 2, 4, 6, 8, 12, 17)  # as examples/sharc-filter/machine.c
 
 
-def curve_dots(freq, reso):
-    """The screen dots the example LOWPASS draws in the FLTR graph for the shown FREQ and RESO words."""
+def curve_dots(freq, reso, g=0):
+    """The screen dots the example LOWPASS draws in the FLTR graph for the shown FREQ, RESO and G
+    words: G (MODE) 64..127 mirrors the low-pass curve into the high-pass."""
     cutoff, peak, dots = freq >> 8, PEAK_DB[(reso >> 8) >> 4], set()
     for x in range(51):
-        d = x * 127 // 50 - cutoff
+        d = (x * 127 // 50 - cutoff) * (-1 if g >> 8 >= 64 else 1)
         db = (peak * (12 + d) // 12 if d > -12 else 0) if d <= 0 else -d + (peak * (12 - d) // 12 if d < 12 else 0)
         if db >= -36:
             dots.add((21 + x, 56 - min((db + 36) // 3, 16)))
@@ -553,7 +555,7 @@ def run_cases(t, check, cases=None):
     for name, case in CASES.items():
         if cases is None or name in cases:
             result = case(t, check)
-            if name == 'save':
+            if name in ('save', 'g') and result is not None:
                 saved = result
     check('runs without faults', t.healthy())
     return saved
@@ -600,16 +602,10 @@ def run_controls(t, check):
     for cc, value in ((16, 64), (17, 0)):  # FREQ, RESO
         t.midi(bytes([0xb0, cc, value]))
     stock = t.page('FLTR')
-    g = t.word(0x98)
-    t.midi(bytes([0xb0, 18, (g >> 8) ^ 64]))
-    check('LOWPASS 4: CC 18 leaves slot 66 alone (it has no G)', t.word(0x98) == g, word=hex(t.word(0x98)))
-    mode = text(t.page('AMP'), MODE_LABEL)
     if not check('SINE + LOWPASS: selected again', t.select(SINE, LOWPASS), machines=t.machines()):
         return
-    page = t.page('FLTR')
-    check("LOWPASS: FLTR page is LOWPASS 4's with its own curve", page_as_stock(page, stock, curve_dots(64 << 8, 0)))
-    check('LOWPASS: G shows its label, MODE', mode.size and np.array_equal(text(page, G_LABEL), mode),
-          dotted=bool(stock[G_CELL].any() and not np.array_equal(page[G_CELL], stock[G_CELL])))
+    t.midi(bytes([0xb0, G[1], 0]))  # the low-pass curve
+    check("LOWPASS: FLTR page is LOWPASS 4's with its own curve", page_as_stock(t.page('FLTR'), stock, curve_dots(64 << 8, 0)))
     for name, (offset, cc, nrpn, encoder) in CONTROLS.items():
         t.midi(bytes([0xb0, cc, 64]))
         knob = 'FUNC+A' if encoder is None else 'encoder ' + 'ABCDEFGH'[encoder - 1]
@@ -645,11 +641,6 @@ def run_response(t, check):
         got = level_db(take('f%d-r%d' % (freq, reso), FREQ=freq, RESO=reso)) - open_db
         expected = svf_db(hz, freq, reso) - svf_db(hz, 127)
         check('LOWPASS FREQ %d RESO %d: note 60 at its response' % (freq, reso), abs(got - expected) <= 1.5,
-              level_db=round(float(got), 2), expected_db=round(float(expected), 2))
-    for freq in (50, 72, 90):  # G 127: the high-pass output
-        got = level_db(take('hp-f%d' % freq, FREQ=freq, G=127)) - open_db
-        expected = svf_db(hz, freq, 0, highpass=True) - svf_db(hz, 127)
-        check('LOWPASS G 127 FREQ %d: note 60 at the high-pass response' % freq, abs(got - expected) <= 1.5,
               level_db=round(float(got), 2), expected_db=round(float(expected), 2))
     # The envelope moves the cutoff over a held note. Compare 20 ms windows from 60 to 760 ms
     # (the note ends at 800) with the same note through a fixed cutoff, which cancels SINE's drift.
@@ -749,6 +740,7 @@ def run_curve(t, check):
     if not check('SINE + LOWPASS: selected for its curve', t.select(SINE, LOWPASS), machines=t.machines()):
         return
     t.page('FLTR')
+    t.midi(bytes([0xb0, G[1], 0]))  # the low-pass curve
     for freq, reso in ((40, 0), (100, 0), (72, 120)):
         t.midi(bytes([0xb0, 16, freq]))
         t.midi(bytes([0xb0, 17, reso]))
@@ -787,6 +779,33 @@ def run_routes(t, check):
               change_db=round(change, 2))
 
 
+def lock_trigs(t, check):
+    """Trigs on steps 1 and 9 of the empty scratch pattern, on the FLTR page; whether they play."""
+    t.open_filters()
+    t.page('FLTR')
+    if not check("the scratch pattern has no trigs", not onsets(t.pattern('LOCKS-empty'))):
+        return False
+    t.tap('RECORD', '1', '9', 'RECORD')
+    x = t.pattern('LOCKS-trigs')
+    starts = [round((s - onsets(x)[0]) / RATE, 3) for s in onsets(x)]
+    # Two bars, and the next bar's step 1 may start before STOP.
+    return check('steps 1 and 9 play', len(starts) in (4, 5) and all(abs(a - b) < 0.02 for a, b in zip(starts, range(5))),
+                 onsets_s=starts)
+
+
+def steps(x):
+    """20 ms windows over 600 ms from each of the first two notes' starts, in dB."""
+    n = RATE // 50
+    return [20 * np.log10(np.sqrt(np.mean(x[s:s + 30 * n].reshape(30, n) ** 2, axis=1)) + 1e-9)
+            for s in onsets(x)[:2] if s + 30 * n <= len(x)]
+
+
+def change(a, b):
+    """The largest difference between two window series, in dB."""
+    n = min(len(a), len(b))
+    return float(np.max(np.abs(a[:n] - b[:n]))) if n else np.inf
+
+
 def run_locks(t, check):
     """Parameter locks on step 9 change that step's note and leave step 1's alone."""
     if t.name == 'device':
@@ -795,26 +814,8 @@ def run_locks(t, check):
         return
     if not check('SINE + LOWPASS: selected for locks', t.select(SINE, LOWPASS), machines=t.machines()):
         return
-    t.open_filters()
-    t.page('FLTR')
-    if not check("the scratch pattern has no trigs", not onsets(t.pattern('LOCKS-empty'))):
+    if not lock_trigs(t, check):
         return
-    t.tap('RECORD', '1', '9', 'RECORD')
-    x = t.pattern('LOCKS-trigs')
-    starts = [round((s - onsets(x)[0]) / RATE, 3) for s in onsets(x)]
-    # Two bars, and the next bar's step 1 may start before STOP.
-    if not check('steps 1 and 9 play', len(starts) in (4, 5) and all(abs(a - b) < 0.02 for a, b in zip(starts, range(5))),
-                 onsets_s=starts):
-        return
-
-    def steps(x):  # 20 ms windows over 600 ms from each of the two notes' starts
-        n = RATE // 50
-        return [20 * np.log10(np.sqrt(np.mean(x[s:s + 30 * n].reshape(30, n) ** 2, axis=1)) + 1e-9)
-                for s in onsets(x)[:2] if s + 30 * n <= len(x)]
-
-    def change(a, b):
-        n = min(len(a), len(b))
-        return float(np.max(np.abs(a[:n] - b[:n]))) if n else np.inf
 
     # Each control gets a setting where its lock is clearly audible, and its own before and after.
     # Locks are absolute, so earlier locks on step 9 stay; ATK goes last, as a slow attack would
@@ -822,8 +823,7 @@ def run_locks(t, check):
     sweep = {'FREQ': 40, 'RESO': 0, 'ENV': 127, 'ATK': 0, 'DEC': 5, 'SUS': 0, 'REL': 0}
     for name, encoder, setting in (('RESO', 6, {'FREQ': 72, 'RESO': 0, 'ENV': 64}),
                                    ('ENV', 8, {**sweep, 'ENV': 70}), ('DEC', 2, sweep), ('SUS', 3, sweep),
-                                   ('REL', 4, {**sweep, 'DEC': 127, 'SUS': 127}),
-                                   ('G', 7, {'FREQ': 100, 'G': 40}), ('ATK', 1, sweep)):
+                                   ('REL', 4, {**sweep, 'DEC': 127, 'SUS': 127}), ('ATK', 1, sweep)):
         for control, value in {**REST, **setting}.items():
             t.midi(bytes([0xb0, CCS[control], value]))
         before = steps(t.pattern('LOCKS-%s-before' % name, bars=1))
@@ -856,8 +856,6 @@ def run_switch(t, check):
     if not check('SINE + MULTI-MODE: selected in between', t.select(SINE, MULTI_MODE), machines=t.machines()):
         return
     play(t, 'SWITCH-stock', **settings)
-    t.midi(bytes([0xb0, 18, 77]))
-    check("MULTI-MODE: CC 18 still sets its TYPE", t.word(0x98) == 77 << 8, word=hex(t.word(0x98)))
     if not check('SINE + LOWPASS: selected again after MULTI-MODE', t.select(SINE, LOWPASS), machines=t.machines()):
         return
     first, again = (window_db(play(t, 'SWITCH-' + name, **settings)) for name in ('back', 'again'))
@@ -890,10 +888,71 @@ def run_save(t, check):
     return row
 
 
+def run_g(t, check):
+    """LOWPASS's G (MODE): the stock filters' slot 66 unchanged, its label, encoder, CC, NRPN, the
+    high-pass response and curve, a lock (emulator only) and saving."""
+    offset, cc, nrpn, encoder = G
+    if not check('SINE + MULTI-MODE: selected for G', t.select(SINE, MULTI_MODE), machines=t.machines()):
+        return None
+    t.midi(bytes([0xb0, cc, 77]))
+    check("MULTI-MODE: CC 18 still sets its TYPE", t.word(offset) == 77 << 8, word=hex(t.word(offset)))
+    if not check('SINE + LOWPASS 4: selected for G', t.select(SINE, LOWPASS_4), machines=t.machines()):
+        return None
+    t.midi(bytes([0xb0, cc, 20]))
+    check('LOWPASS 4: CC 18 leaves slot 66 alone (it has no G)', t.word(offset) == 77 << 8, word=hex(t.word(offset)))
+    stock, mode = t.page('FLTR'), text(t.page('AMP'), MODE_LABEL)
+    if not check('SINE + LOWPASS: selected for G', t.select(SINE, LOWPASS), machines=t.machines()):
+        return None
+    page = t.page('FLTR')
+    check('LOWPASS: G shows its label, MODE, where LOWPASS 4 has a dotted cell',
+          mode.size and np.array_equal(text(page, G_LABEL), mode) and stock[G_CELL].any()
+          and not np.array_equal(page[G_CELL], stock[G_CELL]))
+    t.midi(bytes([0xb0, cc, 64]))
+    check('LOWPASS G: encoder G turns it up', t.turn(encoder, 10, offset), word=hex(t.word(offset)))
+    t.midi(bytes([0xb0, cc, 33]))
+    check('LOWPASS G: CC 18 sets it', t.word(offset) >> 8 == 33, word=hex(t.word(offset)))
+    t.nrpn(1, nrpn, 77 << 7)
+    check('LOWPASS G: NRPN 1:22 sets it', t.word(offset) >> 8 == 77, word=hex(t.word(offset)))
+    for freq, reso, g in ((72, 120, 127), (40, 0, 64), (72, 120, 0)):  # the curve follows G
+        for control, value in ((16, freq), (17, reso), (cc, g)):
+            t.midi(bytes([0xb0, control, value]))
+        t.wait(300)
+        got, want = graph_dots(t.screen()), curve_dots(freq << 8, reso << 8, g << 8)
+        check('LOWPASS FREQ %d RESO %d G %d: the graph draws its curve' % (freq, reso, g), got == want,
+              missing=len(want - got), extra=len(got - want))
+    t.open_filters()
+    hz = pitch_of(SINE, 60)
+    open_db = level_db(play(t, 'G-open'))
+    for freq in (50, 72, 90):  # G 127: the high-pass output
+        got = level_db(play(t, 'G-hp-f%d' % freq, FREQ=freq, G=127)) - open_db
+        expected = svf_db(hz, freq, 0, highpass=True) - svf_db(hz, 127)
+        check('LOWPASS G 127 FREQ %d: note 60 at the high-pass response' % freq, abs(got - expected) <= 1.5,
+              level_db=round(float(got), 2), expected_db=round(float(expected), 2))
+    if t.name == 'device':
+        print('device   SKIP G lock: parameter locks are checked in the emulator only', flush=True)
+    elif lock_trigs(t, check):
+        for control, value in {**REST, 'FREQ': 100, 'G': 40}.items():
+            t.midi(bytes([0xb0, CCS[control], value]))
+        before = steps(t.pattern('LOCKS-G-before', bars=1))
+        t.lock(9, encoder, 30)
+        after = steps(t.pattern('LOCKS-G', bars=1))
+        step1, step9 = change(before[0], after[0]), change(before[1], after[1])
+        check('LOWPASS: G locked on step 9 changes that step only', step9 >= 1 and step1 <= 0.5,
+              step9_db=round(step9, 2), step1_db=round(step1, 2))
+    t.nrpn(1, nrpn, 99 << 7)
+    if not check('the project saves into slot %d' % SAVE_SLOT, t.save_project() is not None):
+        return None
+    t.nrpn(1, nrpn, 10 << 7)  # unsaved, so loading must discard it
+    row = t.load_project()
+    check('LOWPASS G survives saving and loading the project',
+          t.machines() == (SINE, LOWPASS) and t.word(offset) >> 8 == 99, machines=t.machines(), word=hex(t.word(offset)))
+    return row
+
+
 CASES = {'combinations': run_combinations, 'controls': run_controls, 'response': run_response,
          'tracks': run_tracks, 'downstream': run_downstream, 'curve': run_curve, 'routes': run_routes,
          'locks': run_locks,
-         'switch': run_switch, 'save': run_save}
+         'switch': run_switch, 'save': run_save, 'g': run_g}
 
 
 # ----- the run ---------------------------------------------------------------

@@ -116,9 +116,10 @@ class MeasurementTests(unittest.TestCase):
 int main(void)
 {
     uint8_t y[51];
+    for (unsigned g = 0; g < 128; g += 63)
     for (unsigned freq = 0; freq < 128; freq += 9)
         for (unsigned reso = 0; reso < 128; reso += 11) {
-            lowpass.curve(freq << 8, reso << 8, y);
+            lowpass.curve(freq << 8, reso << 8, g << 8, y);
             for (unsigned x = 0; x < 51; ++x)
                 printf("%u ", y[x]);
             printf("\n");
@@ -130,11 +131,12 @@ int main(void)
                             str(build.VENDOR / 'elekloader/sdk/include'), str(p / 'check.c'), '-o', str(p / 'check')],
                            check=True)
             rows = subprocess.run([str(p / 'check')], check=True, capture_output=True, text=True).stdout.split('\n')
-        cases = [(f, r) for f in range(0, 128, 9) for r in range(0, 128, 11)]
-        for (freq, reso), row in zip(cases, rows):
+        cases = [(f, r, g) for g in range(0, 128, 63) for f in range(0, 128, 9) for r in range(0, 128, 11)]
+        self.assertEqual(len(rows), len(cases) + 1)  # and the last newline
+        for (freq, reso, g), row in zip(cases, rows):
             y = [int(v) for v in row.split()]
             drawn = {(21 + x, 56 - min(v, 16)) for x, v in enumerate(y) if v != 0xff}
-            self.assertEqual(drawn, qualify.curve_dots(freq << 8, reso << 8), (freq, reso))
+            self.assertEqual(drawn, qualify.curve_dots(freq << 8, reso << 8, g << 8), (freq, reso, g))
 
     def test_highlighted_row(self):
         screen = np.zeros((64, 128), dtype=np.uint8)
