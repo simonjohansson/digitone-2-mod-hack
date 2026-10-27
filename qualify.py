@@ -785,13 +785,14 @@ def run_routes(t, check):
 
 
 def lock_trigs(t, check):
-    """Trigs on steps 1 and 9 of the empty scratch pattern, on the FLTR page; whether they play."""
+    """Trigs on steps 1 and 9 of the scratch pattern, on the FLTR page; whether they play. An empty
+    pattern gets them; in a full run the locks case has already put them there."""
     t.open_filters()
     t.page('FLTR')
-    if not check("the scratch pattern has no trigs", not onsets(t.pattern('LOCKS-empty'))):
-        return False
-    t.tap('RECORD', '1', '9', 'RECORD')
-    x = t.pattern('LOCKS-trigs')
+    x = t.pattern('LOCKS-empty')
+    if not onsets(x):
+        t.tap('RECORD', '1', '9', 'RECORD')
+        x = t.pattern('LOCKS-trigs')
     starts = [round((s - onsets(x)[0]) / RATE, 3) for s in onsets(x)]
     # Two bars, and the next bar's step 1 may start before STOP.
     return check('steps 1 and 9 play', len(starts) in (4, 5) and all(abs(a - b) < 0.02 for a, b in zip(starts, range(5))),
