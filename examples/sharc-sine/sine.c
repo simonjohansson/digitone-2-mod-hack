@@ -2,7 +2,8 @@
 /* Per-voice oscillator; the stock engine supplies the envelope and filter. */
 #include "digitone-mk2/voice.h"
 
-static uint32_t phase[16];
+struct voice { uint32_t phase; };
+DN2_VOICE_STATE(struct voice);
 
 /* Positive half of 0.125 * sin(2*pi*i/64), rounded to binary32.
  * shortcut: this Selache pin miscompiles negative float initializers;
@@ -30,8 +31,8 @@ static const uint32_t steps12[12] = {
  * around 64..79. FINE is not used yet. Notes outside 36..84 are silent. */
 void sharc_voice_render(const struct dn2_voice_input *in)
 {
-    uint32_t slot = in->slot;
-    uint32_t p = in->flags & DN2_VOICE_START ? 0 : phase[slot];
+    struct voice *v = in->state;
+    uint32_t p = in->flags & DN2_VOICE_START ? 0 : v->phase;
     uint32_t note = (in->pitch >> 8) + (in->param[1] >> 8) + 12 * (in->param[8] >> 12) - 112;
     float gain = (float)(int32_t)(in->param[0] >> 8) * (1.0f / 127.0f);
     uint32_t step = 0;
@@ -49,5 +50,5 @@ void sharc_voice_render(const struct dn2_voice_input *in)
         /* Preserve this example's documented octave-up tuning. */
         p += step + step;
     }
-    phase[slot] = p;
+    v->phase = p;
 }

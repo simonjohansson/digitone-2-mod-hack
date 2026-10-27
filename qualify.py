@@ -123,6 +123,15 @@ def tone_db(x, hz):
     return 20 * np.log10(np.hypot(*fit) / np.sqrt(2))
 
 
+def tones_share_db(x, hzs, width=20):
+    """How much of the held note's power lies within WIDTH Hz of the tones HZS, in dB (0 is all)."""
+    x = held(x)
+    power = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    near = np.any([np.abs(f - hz) <= width for hz in hzs], 0)
+    return 10 * np.log10(power[near].sum() / power.sum())
+
+
 def onsets(x, gap_ms=50):
     """Where sound starts after at least GAP_MS of silence, in samples."""
     loud = np.nonzero(np.abs(x) > 1e-4)[0]
@@ -693,6 +702,11 @@ def run_tracks(t, check):
                 t.midi(bytes([0x80 | (track - 1), note, 0]))
             t.wait(400)
         levels[name] = {track: tone_db(recorded.samples, pitch_of(SINE, note)) for track, note in notes.items()}
+        if name == 'open':
+            # Each voice keeps its own state (in->state), so together they are two clean tones.
+            share = tones_share_db(recorded.samples, [pitch_of(SINE, note) for note in notes.values()])
+            check('tracks 1 and 2: two voices together are their two tones', share >= -0.5,
+                  share_db=round(float(share), 3))
     for track, freq in ((1, 50), (2, 110)):
         hz = pitch_of(SINE, notes[track])
         got = levels['set'][track] - levels['open'][track]

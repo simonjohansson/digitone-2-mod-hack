@@ -66,18 +66,20 @@ class VoiceStateTests(unittest.TestCase):
 int main(void) {
  float a[32], b[32], first[32];
  uint32_t knobs[DN2_VOICE_PARAMS]={0};
+ static struct voice state[16];
+ assert(sharc_voice_state_bytes==sizeof(struct voice));
  knobs[0]=127u<<8; knobs[1]=64u<<8; knobs[8]=64u<<8; knobs[12]=64u<<8;  /* LEV full, TUNE/OCT centred */
- struct dn2_voice_input in={a,0,60u<<8,DN2_VOICE_START,knobs};
+ struct dn2_voice_input in={a,0,60u<<8,DN2_VOICE_START,knobs,&state[0]};
  sharc_voice_render(&in); memcpy(first,a,sizeof a);
- uint32_t saved=phase[0];
- in.output=b; in.slot=1; in.pitch=64u<<8; sharc_voice_render(&in);
- assert(phase[0]==saved && phase[1]!=saved);
- uint32_t other=phase[1];
- in.output=a; in.slot=0; in.pitch=60u<<8; in.flags=0;
+ uint32_t saved=state[0].phase;
+ in.output=b; in.slot=1; in.state=&state[1]; in.pitch=64u<<8; sharc_voice_render(&in);
+ assert(state[0].phase==saved && state[1].phase!=saved);
+ uint32_t other=state[1].phase;
+ in.output=a; in.slot=0; in.state=&state[0]; in.pitch=60u<<8; in.flags=0;
  sharc_voice_render(&in); assert(memcmp(first,a,sizeof a));
  in.flags=DN2_VOICE_START; sharc_voice_render(&in);
- assert(!memcmp(first,a,sizeof a) && phase[1]==other);
- in.slot=15; in.pitch=85u<<8; sharc_voice_render(&in);
+ assert(!memcmp(first,a,sizeof a) && state[1].phase==other);
+ in.slot=15; in.state=&state[15]; in.pitch=85u<<8; sharc_voice_render(&in);
  for(int i=0;i<32;++i) assert(a[i]==0.0f);
  return 0;
 }
@@ -96,11 +98,12 @@ int main(void) {
                 + '#include "'+str(source)+'"\n'+'''
 static uint32_t knobs[DN2_VOICE_PARAMS];
 static float out[32];
+static struct voice state;
 /* One START block of note 60; returns the phase it advanced, fills out. */
 static uint32_t block(uint32_t lev, uint32_t tune, uint32_t oct) {
  knobs[0]=lev<<8; knobs[1]=tune<<8; knobs[8]=oct<<8;
- struct dn2_voice_input in={out,0,60u<<8,DN2_VOICE_START,knobs};
- sharc_voice_render(&in); return phase[0];
+ struct dn2_voice_input in={out,0,60u<<8,DN2_VOICE_START,knobs,&state};
+ sharc_voice_render(&in); return state.phase;
 }
 static float peak(void) { float m=0; for(int i=0;i<32;++i) if(fabsf(out[i])>m) m=fabsf(out[i]); return m; }
 int main(void) {
