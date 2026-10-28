@@ -248,6 +248,22 @@ class EmuPort:
         return messages
 
 
+class EmuClock:
+    """time, with monotonic and sleep in the emulator's milliseconds."""
+
+    def __init__(self, target):
+        self.target = target
+
+    def monotonic(self):
+        return self.target.ms / 1000
+
+    def sleep(self, seconds):
+        self.target.wait(max(1, round(seconds * 1000)))
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
 class Target:
     """What a case needs: keys, screens, RAM, MIDI, time and audio."""
 
@@ -439,11 +455,14 @@ class Emulator(Target):
                                      binary=env_path('DIGI_EMUD'), timeout=300,
                                      run_dir=out / 'run', env={'SHARC_AOT': '0'})
         self.loaded = self.emu.call('firmware.load', syx=str(firmware), start='cold', force=True, auto_no=True)
+        self.ms = 0
         self.wait(300)
+        digiusb.time = EmuClock(self)  # DigiHealth's deadlines are the unit's time: here, emulated time
         self.port = EmuPort(self)
         self.open()
 
     def wait(self, ms):
+        self.ms += ms
         left = int(ms * self.INSTRUCTIONS_PER_MS)
         while left:
             step = min(left, self.INSTRUCTIONS_PER_MS * 500)
@@ -474,6 +493,7 @@ class Emulator(Target):
         take.samples = read_wav(path)
 
     def shutdown(self):
+        digiusb.time = time
         try:
             self.emu.call('quit')
         finally:
